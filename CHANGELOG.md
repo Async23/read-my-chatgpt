@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-07-21
+
+### Fixed
+
+- Wait for the legacy launchd process to finish flushing Obscura profile data
+  before moving installation directories.
+- Remove an emptied legacy config directory after a conflict-safe migration.
+
 ## [0.2.0] - 2026-07-21
 
 ### Changed
@@ -37,7 +45,8 @@
   CLI, OpenCode, and Pi.
 - Read-only conversation listing, retrieval, and title search tools.
 
-[Unreleased]: https://github.com/Async23/read-my-chatgpt/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/Async23/read-my-chatgpt/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/Async23/read-my-chatgpt/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/Async23/read-my-chatgpt/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/Async23/read-my-chatgpt/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/Async23/read-my-chatgpt/releases/tag/v0.1.0
