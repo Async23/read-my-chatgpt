@@ -90,6 +90,22 @@ test("one HTTP runtime serves independent authenticated MCP sessions", async () 
     });
     assert.equal(unauthorized.status, 401);
 
+    const pathologicalAuthorization = await fetch(running.url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${" ".repeat(4_000)}wrong`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: {},
+      }),
+      signal: AbortSignal.timeout(2_000),
+    });
+    assert.equal(pathologicalAuthorization.status, 401);
+
     const foreignOrigin = await fetch(running.url, {
       method: "POST",
       headers: {

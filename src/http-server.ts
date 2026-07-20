@@ -315,10 +315,25 @@ function validBearerToken(
   authorization: string | undefined,
   expected: string,
 ): boolean {
-  const match = /^Bearer\s+(.+)$/i.exec(authorization ?? "");
-  if (!match) return false;
+  if (
+    !authorization ||
+    authorization.length <= 7 ||
+    authorization.slice(0, 6).toLowerCase() !== "bearer" ||
+    authorization.charCodeAt(6) !== 0x20
+  ) {
+    return false;
+  }
 
-  const actualBytes = Buffer.from(match[1], "utf8");
+  let tokenStart = 7;
+  while (authorization.charCodeAt(tokenStart) === 0x20) {
+    tokenStart += 1;
+  }
+  if (tokenStart === authorization.length) return false;
+
+  const actualBytes = Buffer.from(
+    authorization.slice(tokenStart),
+    "utf8",
+  );
   const expectedBytes = Buffer.from(expected, "utf8");
   return (
     actualBytes.length === expectedBytes.length &&
