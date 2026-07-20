@@ -13,6 +13,7 @@
 ### Security
 
 - Hardened GitHub Actions and release checks.
+- Eliminated regex backtracking on untrusted `Authorization` headers.
 
 ## [0.1.0] - 2026-07-20
 
