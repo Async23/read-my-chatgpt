@@ -1,5 +1,6 @@
 import { ChatGPTClient } from "./chatgpt-client.js";
 import type { Config } from "./config.js";
+import { SERVICE_NAME } from "./install-paths.js";
 import { createReadMyChatGptMcpServer } from "./mcp-server.js";
 import { createChatGPTTransport } from "./transport/create-transport.js";
 
@@ -27,7 +28,7 @@ export class ReadMyChatGptRuntime {
 
   createMcpServer() {
     if (this.closed) {
-      throw new Error("conversation-reader-mcp runtime is closed");
+      throw new Error(`${SERVICE_NAME} runtime is closed`);
     }
     return createReadMyChatGptMcpServer(this.config, this.client);
   }

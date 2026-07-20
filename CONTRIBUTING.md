@@ -1,6 +1,6 @@
 # Contributing
 
-感谢你愿意改进 Conversation Reader MCP。
+感谢你愿意改进 Read My ChatGPT。
 
 ## 开始之前
 
@@ -13,8 +13,8 @@
 ## 本地开发
 
 ```bash
-git clone https://github.com/Async23/conversation-reader-mcp.git
-cd conversation-reader-mcp
+git clone https://github.com/Async23/read-my-chatgpt.git
+cd read-my-chatgpt
 npm ci
 npm run check
 ```

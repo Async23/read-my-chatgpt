@@ -18,7 +18,7 @@ import {
 } from "../src/client-config.js";
 
 test("updates JSON client config without replacing unrelated settings", async (t) => {
-  const home = await mkdtemp(join(tmpdir(), "conversation-reader-client-"));
+  const home = await mkdtemp(join(tmpdir(), "read-my-chatgpt-client-"));
   t.after(() => rm(home, { recursive: true, force: true }));
   const path = join(home, ".cursor", "mcp.json");
   await mkdir(join(home, ".cursor"), { recursive: true });
@@ -28,7 +28,7 @@ test("updates JSON client config without replacing unrelated settings", async (t
       theme: "dark",
       mcpServers: {
         existing: { command: "existing-server" },
-        "read-my-chatgpt": { command: "legacy-server" },
+        "conversation-reader": { command: "legacy-server" },
       },
     }),
   );
@@ -54,8 +54,8 @@ test("updates JSON client config without replacing unrelated settings", async (t
   assert.deepEqual(config.mcpServers.existing, {
     command: "existing-server",
   });
-  assert.equal(config.mcpServers["read-my-chatgpt"], undefined);
-  assert.deepEqual(config.mcpServers["conversation-reader"], {
+  assert.equal(config.mcpServers["conversation-reader"], undefined);
+  assert.deepEqual(config.mcpServers["read-my-chatgpt"], {
     url: "http://127.0.0.1:47831/mcp",
     headers: { Authorization: "Bearer mcp-secret" },
   });
@@ -68,7 +68,7 @@ test("updates JSON client config without replacing unrelated settings", async (t
 });
 
 test("surgically updates Codex TOML and removes the legacy server", async (t) => {
-  const home = await mkdtemp(join(tmpdir(), "conversation-reader-codex-"));
+  const home = await mkdtemp(join(tmpdir(), "read-my-chatgpt-codex-"));
   t.after(() => rm(home, { recursive: true, force: true }));
   const path = join(home, ".codex", "config.toml");
   await mkdir(join(home, ".codex"), { recursive: true });
@@ -76,7 +76,7 @@ test("surgically updates Codex TOML and removes the legacy server", async (t) =>
     path,
     `model = "gpt-test"
 
-[mcp_servers.read-my-chatgpt]
+[mcp_servers.conversation-reader]
 url = "http://old.invalid/mcp"
 
 [mcp_servers.other]
@@ -96,14 +96,14 @@ command = "other"
   const contents = await readFile(path, "utf8");
   assert.match(contents, /model = "gpt-test"/);
   assert.match(contents, /\[mcp_servers\.other\]/);
-  assert.doesNotMatch(contents, /read-my-chatgpt/);
-  assert.match(contents, /\[mcp_servers\.conversation-reader\]/);
+  assert.doesNotMatch(contents, /\[mcp_servers\.conversation-reader\]/);
+  assert.match(contents, /\[mcp_servers\.read-my-chatgpt\]/);
   assert.match(contents, /http_headers = \{ Authorization = /);
   assert.match(contents, /quote\\"and\\\\slash/);
 });
 
 test("refuses invalid JSON and leaves the original untouched", async (t) => {
-  const home = await mkdtemp(join(tmpdir(), "conversation-reader-invalid-"));
+  const home = await mkdtemp(join(tmpdir(), "read-my-chatgpt-invalid-"));
   t.after(() => rm(home, { recursive: true, force: true }));
   const path = join(home, ".claude.json");
   await writeFile(path, "{ invalid json\n");
@@ -122,7 +122,7 @@ test("refuses invalid JSON and leaves the original untouched", async (t) => {
 });
 
 test("auto mode only configures detected client directories", async (t) => {
-  const home = await mkdtemp(join(tmpdir(), "conversation-reader-auto-"));
+  const home = await mkdtemp(join(tmpdir(), "read-my-chatgpt-auto-"));
   t.after(() => rm(home, { recursive: true, force: true }));
   await mkdir(join(home, ".gemini"), { recursive: true });
 
@@ -142,7 +142,7 @@ test("auto mode only configures detected client directories", async (t) => {
 });
 
 test("uninstall cleanup removes only this MCP entry", async (t) => {
-  const home = await mkdtemp(join(tmpdir(), "conversation-reader-remove-"));
+  const home = await mkdtemp(join(tmpdir(), "read-my-chatgpt-remove-"));
   t.after(() => rm(home, { recursive: true, force: true }));
   const path = join(home, ".cursor", "mcp.json");
   await mkdir(join(home, ".cursor"), { recursive: true });
@@ -151,7 +151,7 @@ test("uninstall cleanup removes only this MCP entry", async (t) => {
     JSON.stringify({
       mcpServers: {
         existing: { command: "keep-me" },
-        "conversation-reader": {
+        "read-my-chatgpt": {
           url: "http://127.0.0.1:47831/mcp",
         },
       },
@@ -174,7 +174,7 @@ test("uninstall cleanup removes only this MCP entry", async (t) => {
 });
 
 test("writes each supported client's current remote HTTP shape", async (t) => {
-  const home = await mkdtemp(join(tmpdir(), "conversation-reader-shapes-"));
+  const home = await mkdtemp(join(tmpdir(), "read-my-chatgpt-shapes-"));
   t.after(() => rm(home, { recursive: true, force: true }));
   const env = { XDG_CONFIG_HOME: join(home, ".config") };
 
@@ -191,7 +191,7 @@ test("writes each supported client's current remote HTTP shape", async (t) => {
   const claude = JSON.parse(
     await readFile(join(home, ".claude.json"), "utf8"),
   );
-  assert.deepEqual(claude.mcpServers["conversation-reader"], {
+  assert.deepEqual(claude.mcpServers["read-my-chatgpt"], {
     type: "http",
     url: "http://127.0.0.1:47831/mcp",
     headers: { Authorization: "Bearer mcp-secret" },
@@ -200,7 +200,7 @@ test("writes each supported client's current remote HTTP shape", async (t) => {
   const gemini = JSON.parse(
     await readFile(join(home, ".gemini", "settings.json"), "utf8"),
   );
-  assert.deepEqual(gemini.mcpServers["conversation-reader"], {
+  assert.deepEqual(gemini.mcpServers["read-my-chatgpt"], {
     httpUrl: "http://127.0.0.1:47831/mcp",
     headers: { Authorization: "Bearer mcp-secret" },
     timeout: 60_000,
@@ -212,22 +212,22 @@ test("writes each supported client's current remote HTTP shape", async (t) => {
       "utf8",
     ),
   );
-  assert.equal(opencode.mcp["conversation-reader"].type, "remote");
-  assert.equal(opencode.mcp["conversation-reader"].oauth, false);
+  assert.equal(opencode.mcp["read-my-chatgpt"].type, "remote");
+  assert.equal(opencode.mcp["read-my-chatgpt"].oauth, false);
 
   const pi = JSON.parse(
     await readFile(join(home, ".pi", "agent", "mcp.json"), "utf8"),
   );
-  assert.equal(pi.mcpServers["conversation-reader"].directTools, true);
-  assert.equal(pi.mcpServers["conversation-reader"].auth, undefined);
+  assert.equal(pi.mcpServers["read-my-chatgpt"].directTools, true);
+  assert.equal(pi.mcpServers["read-my-chatgpt"].auth, undefined);
 
   const grok = await readFile(join(home, ".grok", "config.toml"), "utf8");
-  assert.match(grok, /\[mcp_servers\.conversation-reader\]/);
-  assert.match(grok, /\[mcp_servers\.conversation-reader\.headers\]/);
+  assert.match(grok, /\[mcp_servers\.read-my-chatgpt\]/);
+  assert.match(grok, /\[mcp_servers\.read-my-chatgpt\.headers\]/);
 });
 
 test("updates a symlink target without replacing the symlink", async (t) => {
-  const home = await mkdtemp(join(tmpdir(), "conversation-reader-symlink-"));
+  const home = await mkdtemp(join(tmpdir(), "read-my-chatgpt-symlink-"));
   t.after(() => rm(home, { recursive: true, force: true }));
   const dotfiles = join(home, "dotfiles");
   const target = join(dotfiles, "cursor-mcp.json");
@@ -247,5 +247,5 @@ test("updates a symlink target without replacing the symlink", async (t) => {
 
   assert.equal(result.configured, true);
   assert.equal((await lstat(path)).isSymbolicLink(), true);
-  assert.match(await readFile(target, "utf8"), /conversation-reader/);
+  assert.match(await readFile(target, "utf8"), /read-my-chatgpt/);
 });

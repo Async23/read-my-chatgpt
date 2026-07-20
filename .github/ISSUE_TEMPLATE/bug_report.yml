@@ -48,8 +48,8 @@ body:
   - type: input
     id: package
     attributes:
-      label: conversation-reader-mcp 版本
-      placeholder: conversation-reader-mcp --version
+      label: read-my-chatgpt 版本
+      placeholder: read-my-chatgpt --version
     validations:
       required: true
   - type: input
@@ -80,5 +80,5 @@ body:
     id: doctor
     attributes:
       label: 已脱敏的 doctor 输出
-      description: 可粘贴 `conversation-reader-mcp doctor --json`；请再次确认不含敏感数据。
+      description: 可粘贴 `read-my-chatgpt doctor --json`；请再次确认不含敏感数据。
       render: shell

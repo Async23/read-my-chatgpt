@@ -2,7 +2,7 @@
 
 ## Obscura
 
-Conversation Reader MCP can download and run Obscura as a local sidecar during
+Read My ChatGPT can download and run Obscura as a local sidecar during
 `setup`.
 
 - Project: https://github.com/h4ckf0r0day/obscura
@@ -17,4 +17,4 @@ macOS/Linux asset and rejects it unless its SHA-256 matches the value pinned in
 `src/obscura-installer.ts` (compiled into the published package).
 
 Obscura is a separate project. Its authors do not endorse or support
-Conversation Reader MCP.
+Read My ChatGPT.

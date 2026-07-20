@@ -44,12 +44,12 @@ test("uses an XDG-scoped managed Obscura path", () => {
       platform: "linux",
       arch: "x64",
     }),
-    "/tmp/example-data/conversation-reader-mcp/obscura/v0.1.10/linux-x64/obscura",
+    "/tmp/example-data/read-my-chatgpt/obscura/v0.1.10/linux-x64/obscura",
   );
 });
 
 test("validates the required Obscura CLI features", async (t) => {
-  const directory = await mkdtemp(join(tmpdir(), "conversation-reader-bin-"));
+  const directory = await mkdtemp(join(tmpdir(), "read-my-chatgpt-bin-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const binary = join(directory, "obscura");
   await writeFile(
@@ -70,7 +70,7 @@ fi
 });
 
 test("writes service secrets privately and validates their keys", async (t) => {
-  const directory = await mkdtemp(join(tmpdir(), "conversation-reader-env-"));
+  const directory = await mkdtemp(join(tmpdir(), "read-my-chatgpt-env-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const path = join(directory, "nested", "service.json");
 
@@ -104,15 +104,15 @@ test("renders dynamic launchd and systemd definitions safely", () => {
     platform: "darwin" as const,
     paths,
     nodePath: '/opt/node "stable"/bin/node',
-    entrypointPath: "/opt/conversation-reader/dist/index.js",
+    entrypointPath: "/opt/read-my-chatgpt/dist/index.js",
   };
   const plist = renderLaunchAgent(options);
-  assert.match(plist, /io\.github\.async23\.conversation-reader-mcp/);
+  assert.match(plist, /io\.github\.async23\.read-my-chatgpt/);
   assert.match(plist, /\/home\/a&amp;b/);
   assert.doesNotMatch(plist, /\/Users\/alfheim/);
 
   const unit = renderSystemdUnit({ ...options, platform: "linux" });
-  assert.match(unit, /Conversation Reader MCP singleton/);
+  assert.match(unit, /Read My ChatGPT MCP singleton/);
   assert.match(unit, /node \\"stable\\"/);
   assert.doesNotMatch(unit, /\/Users\/alfheim/);
 });

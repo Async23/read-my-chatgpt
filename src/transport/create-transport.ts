@@ -1,4 +1,5 @@
 import type { Config } from "../config.js";
+import { SERVICE_NAME } from "../install-paths.js";
 import { ensureObscuraBinary } from "../obscura-installer.js";
 import type { ChatGPTTransport } from "./chatgpt-transport.js";
 import { DirectChatGPTTransport } from "./direct-transport.js";
@@ -22,7 +23,7 @@ export async function createChatGPTTransport(
   const binaryPath = await ensureObscuraBinary({
     explicitBinary: config.obscuraBinary,
     log: (message) =>
-      console.error(`[conversation-reader-mcp] ${message}`),
+      console.error(`[${SERVICE_NAME}] ${message}`),
   });
   return ObscuraChatGPTTransport.launch({
     accessToken: config.accessToken,

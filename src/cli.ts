@@ -20,7 +20,12 @@ import {
 } from "./client-config.js";
 import { ConfigError, loadConfig } from "./config.js";
 import { startHttpMcpServer } from "./http-server.js";
-import { installPaths } from "./install-paths.js";
+import { migrateLegacyInstallation } from "./install-migration.js";
+import {
+  installPaths,
+  legacyInstallPaths,
+  SERVICE_NAME,
+} from "./install-paths.js";
 import {
   ensureObscuraBinary,
   validateObscuraBinary,
@@ -46,7 +51,7 @@ import { PACKAGE_VERSION } from "./version.js";
 
 export const CLI_VERSION = PACKAGE_VERSION;
 const DEFAULT_PORT = 47_831;
-const PRODUCT = "conversation-reader-mcp";
+const PRODUCT = SERVICE_NAME;
 
 type SetupOptions = {
   port: number;
@@ -173,6 +178,19 @@ async function setup(options: SetupOptions): Promise<void> {
       throw new Error("Setup cancelled.");
     }
   }
+  const migration = await migrateLegacyInstallation({
+    platform: process.platform,
+  });
+  if (migration.detected) {
+    console.error(
+      `[${PRODUCT}] Migrated the previous conversation-reader-mcp installation.`,
+    );
+    if (migration.retainedPaths.length > 0) {
+      console.error(
+        `[${PRODUCT}] Kept ${migration.retainedPaths.length} legacy path(s) because new data already existed.`,
+      );
+    }
+  }
   const paths = installPaths();
   const existing = await readOptionalServiceEnvironment(
     paths.serviceConfigPath,
@@ -192,7 +210,9 @@ async function setup(options: SetupOptions): Promise<void> {
     randomBytes(32).toString("base64url");
 
   const obscuraBinary = await ensureObscuraBinary({
-    explicitBinary: process.env.READ_MY_CHATGPT_OBSCURA_BIN,
+    explicitBinary:
+      process.env.READ_MY_CHATGPT_OBSCURA_BIN ||
+      existing?.READ_MY_CHATGPT_OBSCURA_BIN,
     log: (message) => console.error(`[${PRODUCT}] ${message}`),
   });
 
@@ -444,9 +464,14 @@ async function doctor(json: boolean): Promise<boolean> {
 
 async function uninstall(purge: boolean, yes: boolean): Promise<void> {
   const paths = installPaths();
+  const legacyPaths = legacyInstallPaths();
   await uninstallService({
     platform: process.platform,
     paths,
+  });
+  await uninstallService({
+    platform: process.platform,
+    paths: legacyPaths,
   });
   console.log("Background service removed.");
   const clientResults = await removeClientConfigurations({
@@ -479,6 +504,16 @@ async function uninstall(purge: boolean, yes: boolean): Promise<void> {
   await rm(paths.dataDirectory, { recursive: true, force: true });
   await rm(paths.stdoutLogPath, { force: true });
   await rm(paths.stderrLogPath, { force: true });
+  await rm(legacyPaths.configDirectory, {
+    recursive: true,
+    force: true,
+  });
+  await rm(legacyPaths.dataDirectory, {
+    recursive: true,
+    force: true,
+  });
+  await rm(legacyPaths.stdoutLogPath, { force: true });
+  await rm(legacyPaths.stderrLogPath, { force: true });
   console.log("Local configuration and data removed.");
 }
 
