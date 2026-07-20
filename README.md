@@ -1,0 +1,225 @@
+# Conversation Reader MCP
+
+把你自己的 ChatGPT Web 会话历史，以只读 MCP tools 提供给本机多个
+AI 客户端。一个后台 MCP server 共享一个 Obscura 浏览器进程，不会为每个
+客户端重复启动。
+
+> [!WARNING]
+> 本项目使用 ChatGPT 的非公开 Web endpoint，不是 OpenAI 官方产品，也未获
+> OpenAI 认可或赞助。OpenAI 的使用条款限制自动或程序化提取数据或 Output；
+> 请先确认你的使用场景获得允许，并自行承担账号与合规风险。
+
+## 两条命令开始
+
+要求 Node.js 22 或更高版本。目前一键后台服务支持 macOS 和使用
+glibc 2.35+ 的 Linux。
+
+```bash
+npm install -g conversation-reader-mcp
+conversation-reader-mcp setup
+```
+
+`setup` 会：
+
+1. 隐藏输入你的 ChatGPT Web access token；
+2. 从 Obscura 官方 GitHub Release 下载固定版本 `v0.1.10`，并校验
+   SHA-256；
+3. 生成本机 MCP Bearer token，写入权限为 `0600` 的配置文件；
+4. 安装一个 launchd（macOS）或 systemd user（Linux）后台服务；
+5. 自动配置检测到的 Codex、Claude Code、Cursor、Gemini CLI、Grok CLI、
+   OpenCode 和 Pi。
+
+首次运行会先要求确认风险。自动化安装需同时显式设置环境变量并确认：
+
+```bash
+READ_MY_CHATGPT_ACCESS_TOKEN='…' conversation-reader-mcp setup --yes
+```
+
+完成后重启一次 AI 客户端。它们会共同连接：
+
+```text
+http://127.0.0.1:47831/mcp
+```
+
+服务只允许 loopback，不会监听局域网或公网。
+
+## 获取 access token
+
+1. 登录 [chatgpt.com](https://chatgpt.com/)；
+2. 打开开发者工具的 Network；
+3. 找到任意 `/backend-api/*` 请求；
+4. 复制 `Authorization: Bearer …` 中 `Bearer ` 后面的内容。
+
+token 会过期。失效后重新运行 `conversation-reader-mcp setup` 输入新 token，
+后台服务和客户端配置会一起更新。
+
+不要把 token 提交到 Git、Issue、日志或聊天消息中。
+
+## 日常命令
+
+```bash
+# 检查 Node、配置权限、Obscura、后台服务和 HTTP endpoint
+conversation-reader-mcp doctor
+
+# 输出便于脚本读取的诊断结果（不包含任何 token）
+conversation-reader-mcp doctor --json
+
+# 再次配置已检测到的客户端
+conversation-reader-mcp configure
+
+# 指定客户端；也可以用 all 创建全部 7 份配置
+conversation-reader-mcp configure codex cursor gemini
+conversation-reader-mcp configure all
+
+# 停止服务并从客户端移除 MCP 条目；默认保留 token 与浏览器 profile
+conversation-reader-mcp uninstall
+
+# 同时删除本项目保存的配置、token、Obscura 和 profile
+conversation-reader-mcp uninstall --purge
+```
+
+修改客户端配置前会创建 `.bak` 备份；若 `.bak` 已存在，则创建带时间戳的新
+备份。因为客户端配置中会加入 MCP Bearer token，修改后的文件及备份都会
+收紧为 `0600`。
+
+## 支持的客户端
+
+| 客户端 | 默认配置文件 | 形式 |
+|---|---|---|
+| Codex | `~/.codex/config.toml` | Streamable HTTP `url` + `http_headers` |
+| Claude Code | `~/.claude.json` | `type: "http"` + `url` + `headers` |
+| Cursor | `~/.cursor/mcp.json` | `url` + `headers` |
+| Gemini CLI | `~/.gemini/settings.json` | `httpUrl` + `headers` |
+| Grok CLI | `~/.grok/config.toml` | `url` + `headers` |
+| OpenCode | `~/.config/opencode/opencode.json` | `type: "remote"` |
+| Pi | `~/.pi/agent/mcp.json` | `pi-mcp-adapter` remote 配置 |
+
+Pi 本身不内置 MCP；先执行 `pi install npm:pi-mcp-adapter`。`setup` 检测到该
+adapter 后才会自动写入 Pi 配置。
+
+其他支持 Streamable HTTP 的 MCP 客户端可手动使用：
+
+```json
+{
+  "url": "http://127.0.0.1:47831/mcp",
+  "headers": {
+    "Authorization": "Bearer <service.json 中生成的值>"
+  }
+}
+```
+
+Bearer token 保存在
+`~/.config/conversation-reader-mcp/service.json`。不要把该文件分享给别人；
+分享的是 npm 包或 GitHub 仓库，不是你的本机配置。
+
+## MCP tools
+
+| Tool | 用途 |
+|---|---|
+| `list_conversations` | 分页列出会话元数据 |
+| `get_conversation` | 按 ID 读取当前活跃分支的 user/assistant 文本 |
+| `search_conversations` | 按标题子串搜索 |
+
+边界：
+
+- 只读，不发送、修改、归档或分享会话；
+- 读取 live Web 数据，不创建本地会话归档；
+- `search_conversations` 只搜索标题；
+- 只处理个人账号，不添加 Team/Workspace headers；
+- token 过期后需要手动更新。
+
+## 架构
+
+```text
+Codex / Claude / Cursor / Gemini / Grok / OpenCode / Pi
+                         │
+             Streamable HTTP + Bearer
+                         │
+             127.0.0.1:47831/mcp
+                         │
+             1 个 Node MCP singleton
+                         │
+             1 个 Obscura sidecar
+                         │
+       chatgpt.com/backend-api（只读白名单）
+```
+
+每个客户端有独立 MCP session，但共享同一个上游浏览器 runtime。ChatGPT
+access token 只经本机 CDP 注入页面内 XHR，不放进 Obscura argv 或日志。
+
+允许的上游 endpoint 只有：
+
+```text
+GET /backend-api/conversations
+GET /backend-api/conversation/{id}
+```
+
+## 隐私与本机文件
+
+默认位置：
+
+```text
+~/.config/conversation-reader-mcp/service.json
+~/.local/share/conversation-reader-mcp/obscura/
+~/.local/share/conversation-reader-mcp/obscura-profile/
+```
+
+`service.json` 含 access token 与 MCP Bearer token；
+`obscura-profile/` 可能含 cookie 和 localStorage，两者都应按账号敏感数据保护。
+项目不提供云端中转，也不会遥测上传这些数据。
+
+macOS 日志位于
+`~/Library/Logs/conversation-reader-mcp{,.error}.log`。Linux 使用：
+
+```bash
+journalctl --user -u conversation-reader-mcp.service
+```
+
+## 兼容 stdio
+
+旧客户端可直接启动 CLI；这种模式不会提供“全客户端单例”：
+
+```bash
+export READ_MY_CHATGPT_ACCESS_TOKEN='…'
+conversation-reader-mcp
+```
+
+首次启动仍会自动下载并校验 Obscura。也可以指定已有的兼容版本：
+
+```bash
+export READ_MY_CHATGPT_OBSCURA_BIN='/absolute/path/to/obscura'
+```
+
+## 从源码开发
+
+```bash
+git clone https://github.com/Async23/conversation-reader-mcp.git
+cd conversation-reader-mcp
+npm ci
+npm run typecheck
+npm test
+npm run build
+npm run test:package
+```
+
+需要真实账号联调时：
+
+```bash
+export READ_MY_CHATGPT_ACCESS_TOKEN='…'
+npm run smoke
+npm run smoke:stability
+```
+
+## 安全与依赖
+
+- 安全问题请按 [SECURITY.md](SECURITY.md) 私下报告。
+- Obscura 由其官方 Release 在首次 setup 时单独下载，不包含在 npm tarball 中；
+  版本、校验值和许可证信息见
+  [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+- OpenAI 使用条款与品牌规范可能变化，请以
+  [Terms of Use](https://openai.com/policies/terms-of-use/) 和
+  [Brand guidelines](https://openai.com/brand/) 为准。
+
+## License
+
+[MIT](LICENSE)
