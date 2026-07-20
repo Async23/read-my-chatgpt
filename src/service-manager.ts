@@ -48,10 +48,19 @@ export async function uninstallService(
 ): Promise<void> {
   if (options.platform === "darwin") {
     const domain = `gui/${options.uid ?? process.getuid?.()}`;
+    const target = `${domain}/${options.paths.launchdLabel}`;
+    const status = await runAllowFailure("launchctl", [
+      "print",
+      target,
+    ]);
+    const pid = launchdPid(status.stdout);
     await runAllowFailure("launchctl", [
       "bootout",
-      `${domain}/${options.paths.launchdLabel}`,
+      target,
     ]);
+    if (pid !== undefined) {
+      await waitForPidExit(pid, 30_000);
+    }
     await rm(options.paths.launchAgentPath, { force: true });
     return;
   }
@@ -308,4 +317,42 @@ function systemdQuote(value: string): string {
     .replaceAll("\\", "\\\\")
     .replaceAll('"', '\\"')
     .replaceAll("%", "%%")}"`;
+}
+
+function launchdPid(output: string): number | undefined {
+  const match = output.match(/^\s*pid = (\d+)\s*$/m);
+  if (!match) return undefined;
+  const pid = Number(match[1]);
+  return Number.isSafeInteger(pid) && pid > 0 ? pid : undefined;
+}
+
+async function waitForPidExit(
+  pid: number,
+  timeoutMs: number,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (processExists(pid)) {
+    if (Date.now() >= deadline) {
+      throw new Error(
+        `Timed out waiting for launchd process ${pid} to exit`,
+      );
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+}
+
+function processExists(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      "code" in error &&
+      (error as NodeJS.ErrnoException).code === "ESRCH"
+    ) {
+      return false;
+    }
+    throw error;
+  }
 }

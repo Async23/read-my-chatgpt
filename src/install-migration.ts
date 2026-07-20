@@ -1,6 +1,7 @@
 import {
   mkdir,
   rename,
+  rmdir,
   stat,
 } from "node:fs/promises";
 import { dirname } from "node:path";
@@ -94,6 +95,17 @@ export async function migrateLegacyInstallation(options: {
       migratedPaths,
       retainedPaths,
     );
+  }
+  if (
+    !configDirectoryMoved &&
+    (await removeEmptyDirectory(legacy.configDirectory))
+  ) {
+    const retainedIndex = retainedPaths.indexOf(
+      legacy.configDirectory,
+    );
+    if (retainedIndex !== -1) {
+      retainedPaths.splice(retainedIndex, 1);
+    }
   }
   await rebaseServicePaths(current, legacy, {
     configMoved: configDirectoryMoved || serviceConfigMoved,
@@ -195,6 +207,24 @@ async function pathExists(path: string): Promise<boolean> {
       error instanceof Error &&
       "code" in error &&
       (error as NodeJS.ErrnoException).code === "ENOENT"
+    ) {
+      return false;
+    }
+    throw error;
+  }
+}
+
+async function removeEmptyDirectory(path: string): Promise<boolean> {
+  try {
+    await rmdir(path);
+    return true;
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      "code" in error &&
+      ["ENOENT", "ENOTEMPTY", "EEXIST"].includes(
+        String((error as NodeJS.ErrnoException).code),
+      )
     ) {
       return false;
     }
