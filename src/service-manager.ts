@@ -8,8 +8,7 @@ import {
 } from "node:fs/promises";
 import { dirname } from "node:path";
 import {
-  LAUNCHD_LABEL,
-  SERVICE_NAME,
+  SERVICE_DISPLAY_NAME,
   type InstallPaths,
 } from "./install-paths.js";
 
@@ -51,7 +50,7 @@ export async function uninstallService(
     const domain = `gui/${options.uid ?? process.getuid?.()}`;
     await runAllowFailure("launchctl", [
       "bootout",
-      `${domain}/${LAUNCHD_LABEL}`,
+      `${domain}/${options.paths.launchdLabel}`,
     ]);
     await rm(options.paths.launchAgentPath, { force: true });
     return;
@@ -61,7 +60,7 @@ export async function uninstallService(
       "--user",
       "disable",
       "--now",
-      `${SERVICE_NAME}.service`,
+      `${options.paths.serviceName}.service`,
     ]);
     await rm(options.paths.systemdUnitPath, { force: true });
     await runAllowFailure("systemctl", ["--user", "daemon-reload"]);
@@ -80,7 +79,7 @@ export async function getServiceStatus(
     const domain = `gui/${options.uid ?? process.getuid?.()}`;
     const result = await runAllowFailure("launchctl", [
       "print",
-      `${domain}/${LAUNCHD_LABEL}`,
+      `${domain}/${options.paths.launchdLabel}`,
     ]);
     return {
       manager: "launchd",
@@ -94,7 +93,7 @@ export async function getServiceStatus(
     const result = await runAllowFailure("systemctl", [
       "--user",
       "is-active",
-      `${SERVICE_NAME}.service`,
+      `${options.paths.serviceName}.service`,
     ]);
     return {
       manager: "systemd",
@@ -123,7 +122,7 @@ export function renderLaunchAgent(options: ServiceInstallOptions): string {
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>${LAUNCHD_LABEL}</string>
+  <string>${options.paths.launchdLabel}</string>
   <key>ProgramArguments</key>
   <array>
 ${argumentXml}
@@ -159,7 +158,7 @@ export function renderSystemdUnit(options: ServiceInstallOptions): string {
     .join(" ");
 
   return `[Unit]
-Description=Conversation Reader MCP singleton
+Description=${SERVICE_DISPLAY_NAME} MCP singleton
 After=network-online.target
 Wants=network-online.target
 
@@ -196,7 +195,7 @@ async function installLaunchAgent(
   );
   await runAllowFailure("launchctl", [
     "bootout",
-    `${domain}/${LAUNCHD_LABEL}`,
+    `${domain}/${options.paths.launchdLabel}`,
   ]);
   await run("launchctl", [
     "bootstrap",
@@ -206,7 +205,7 @@ async function installLaunchAgent(
   await run("launchctl", [
     "kickstart",
     "-k",
-    `${domain}/${LAUNCHD_LABEL}`,
+    `${domain}/${options.paths.launchdLabel}`,
   ]);
 }
 
@@ -226,7 +225,7 @@ async function installSystemdUserService(
     "--user",
     "enable",
     "--now",
-    `${SERVICE_NAME}.service`,
+    `${options.paths.serviceName}.service`,
   ]);
 }
 

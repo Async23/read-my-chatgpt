@@ -2,6 +2,7 @@ import type {
   ChatGPTTransport,
   TransportResponse,
 } from "./chatgpt-transport.js";
+import { SERVICE_NAME } from "../install-paths.js";
 import { PACKAGE_VERSION } from "../version.js";
 
 export class DirectChatGPTTransport implements ChatGPTTransport {
@@ -27,7 +28,7 @@ export class DirectChatGPTTransport implements ChatGPTTransport {
       headers: {
         Authorization: `Bearer ${this.accessToken}`,
         Accept: "application/json",
-        "User-Agent": `conversation-reader-mcp/${PACKAGE_VERSION}`,
+        "User-Agent": `${SERVICE_NAME}/${PACKAGE_VERSION}`,
       },
       signal: AbortSignal.timeout(
         DirectChatGPTTransport.requestTimeoutMs,

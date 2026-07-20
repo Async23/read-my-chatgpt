@@ -7,7 +7,7 @@ import {
 } from "../dist/obscura-installer.js";
 
 const temporaryDirectory = await mkdtemp(
-  join(tmpdir(), "conversation-reader-obscura-download-"),
+  join(tmpdir(), "read-my-chatgpt-obscura-download-"),
 );
 
 try {

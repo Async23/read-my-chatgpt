@@ -73,7 +73,7 @@ test("one HTTP runtime serves independent authenticated MCP sessions", async () 
     assert.equal(health.status, 200);
     assert.deepEqual(await health.json(), {
       status: "ok",
-      server: "conversation-reader-mcp",
+      server: "read-my-chatgpt",
       transport: "streamable-http",
       sessions: 0,
     });

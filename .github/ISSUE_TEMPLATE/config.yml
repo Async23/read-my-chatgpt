@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: Private security report
-    url: https://github.com/Async23/conversation-reader-mcp/security/advisories/new
+    url: https://github.com/Async23/read-my-chatgpt/security/advisories/new
     about: 漏洞、token、cookie、私人会话或其他敏感问题请在这里私密报告。
   - name: Usage and support guide
-    url: https://github.com/Async23/conversation-reader-mcp/blob/main/SUPPORT.md
+    url: https://github.com/Async23/read-my-chatgpt/blob/main/SUPPORT.md
     about: 提交 Issue 前先查看诊断、脱敏和支持范围说明。

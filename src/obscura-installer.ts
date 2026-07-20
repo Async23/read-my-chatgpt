@@ -232,7 +232,7 @@ async function installManagedObscura(options: {
         `(${Math.ceil(asset.size / 1024 / 1024)} MiB)...`,
     );
     const response = await fetchImpl(url, {
-      headers: { "user-agent": "conversation-reader-mcp-installer" },
+      headers: { "user-agent": `${SERVICE_NAME}-installer` },
       redirect: "follow",
     });
     if (!response.ok) {

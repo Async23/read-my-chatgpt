@@ -41,7 +41,10 @@ type ClientSpec = {
   rootKey?: "mcpServers" | "mcp";
 };
 
-const LEGACY_SERVER_NAMES = ["read-my-chatgpt"] as const;
+const LEGACY_SERVER_NAMES = [
+  "conversation-reader",
+  "conversation-reader-mcp",
+] as const;
 
 export function clientSpecs(
   homeDirectory: string,

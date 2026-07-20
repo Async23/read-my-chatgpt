@@ -5,7 +5,7 @@
 先运行：
 
 ```bash
-conversation-reader-mcp doctor --json
+read-my-chatgpt doctor --json
 ```
 
 然后查看 [README](README.md) 中的安装、token 更新、日志与卸载说明。
@@ -13,7 +13,7 @@ conversation-reader-mcp doctor --json
 仍无法解决时，可以提交 Bug Issue。请只提供：
 
 - 操作系统、CPU 架构和 Node.js 版本；
-- `conversation-reader-mcp` 版本；
+- `read-my-chatgpt` 版本；
 - 使用的 AI 客户端及版本；
 - 最小复现步骤；
 - 已脱敏的 `doctor --json` 输出和错误信息。

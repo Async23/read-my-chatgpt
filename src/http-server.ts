@@ -5,6 +5,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import type { Request, Response } from "express";
+import { SERVICE_NAME } from "./install-paths.js";
 import type { ReadMyChatGptRuntime } from "./runtime.js";
 import type { RunningMcpServer } from "./stdio-server.js";
 
@@ -44,7 +45,7 @@ export async function startHttpMcpServer(
   app.get("/healthz", (_request, response) => {
     response.json({
       status: closing ? "stopping" : "ok",
-      server: "conversation-reader-mcp",
+      server: SERVICE_NAME,
       transport: "streamable-http",
       sessions: sessions.size,
     });
@@ -184,7 +185,7 @@ export async function startHttpMcpServer(
       if (session.lastUsedAt <= expirationTime) {
         void closeSession(sessionId, session).catch((error) => {
           console.error(
-            `[conversation-reader-mcp] failed to close idle session ${sessionId}:`,
+            `[${SERVICE_NAME}] failed to close idle session ${sessionId}:`,
             error,
           );
         });
@@ -300,7 +301,7 @@ function respondInternalError(
   error: unknown,
 ): void {
   console.error(
-    "[conversation-reader-mcp] MCP HTTP request failed:",
+    `[${SERVICE_NAME}] MCP HTTP request failed:`,
     error,
   );
   respondMcpError(

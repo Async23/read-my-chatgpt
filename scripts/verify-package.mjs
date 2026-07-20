@@ -3,6 +3,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { once } from "node:events";
 import {
   chmodSync,
+  copyFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -17,7 +18,7 @@ import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const temporaryRoot = mkdtempSync(
-  join(tmpdir(), "conversation-reader-mcp-package-"),
+  join(tmpdir(), "read-my-chatgpt-package-"),
 );
 
 function run(command, args, options = {}) {
@@ -94,7 +95,7 @@ const server = createServer((request, response) => {
     response.writeHead(200, { "content-type": "application/json" });
     response.end(JSON.stringify({
       status: "ok",
-      server: "conversation-reader-mcp",
+      server: "read-my-chatgpt",
     }));
     return;
   }
@@ -130,6 +131,71 @@ process.on("SIGTERM", () => {
     );
     const xdgConfigHome = join(home, ".config");
     const xdgDataHome = join(home, ".local", "share");
+    const legacyConfigDirectory = join(
+      xdgConfigHome,
+      "conversation-reader-mcp",
+    );
+    const legacyDataDirectory = join(
+      xdgDataHome,
+      "conversation-reader-mcp",
+    );
+    const legacyStorageDirectory = join(
+      legacyDataDirectory,
+      "obscura-profile",
+    );
+    const legacyObscuraPath = join(
+      legacyDataDirectory,
+      "obscura",
+      "v0.1.10",
+      `${process.platform}-${process.arch}`,
+      "obscura",
+    );
+    mkdirSync(legacyConfigDirectory, { recursive: true });
+    mkdirSync(legacyStorageDirectory, { recursive: true });
+    mkdirSync(dirname(legacyObscuraPath), { recursive: true });
+    copyFileSync(obscuraPath, legacyObscuraPath);
+    chmodSync(legacyObscuraPath, 0o700);
+    writeFileSync(
+      join(legacyStorageDirectory, "migration-marker"),
+      "preserve me\n",
+    );
+    writeFileSync(
+      join(legacyConfigDirectory, "service.json"),
+      `${JSON.stringify(
+        {
+          READ_MY_CHATGPT_ACCESS_TOKEN: "legacy-access-token",
+          READ_MY_CHATGPT_TRANSPORT: "obscura",
+          READ_MY_CHATGPT_OBSCURA_BIN: legacyObscuraPath,
+          READ_MY_CHATGPT_OBSCURA_STORAGE_DIR:
+            legacyStorageDirectory,
+          READ_MY_CHATGPT_MCP_TRANSPORT: "http",
+          READ_MY_CHATGPT_MCP_HOST: "127.0.0.1",
+          READ_MY_CHATGPT_MCP_PORT: port,
+          READ_MY_CHATGPT_MCP_BEARER_TOKEN:
+            "legacy-mcp-token",
+        },
+        null,
+        2,
+      )}\n`,
+      { mode: 0o600 },
+    );
+    const legacyServiceDefinition =
+      process.platform === "darwin"
+        ? join(
+            home,
+            "Library",
+            "LaunchAgents",
+            "io.github.async23.conversation-reader-mcp.plist",
+          )
+        : join(
+            xdgConfigHome,
+            "systemd",
+            "user",
+            "conversation-reader-mcp.service",
+          );
+    mkdirSync(dirname(legacyServiceDefinition), { recursive: true });
+    writeFileSync(legacyServiceDefinition, "legacy service\n");
+
     const env = {
       ...cleanEnvironment,
       HOME: home,
@@ -143,9 +209,6 @@ process.on("SIGTERM", () => {
         .filter(Boolean)
         .join(delimiter),
       FAKE_SERVICE_LOG: serviceLog,
-      READ_MY_CHATGPT_ACCESS_TOKEN: "Bearer package-test-access-token",
-      READ_MY_CHATGPT_MCP_BEARER_TOKEN: "package-test-mcp-token",
-      READ_MY_CHATGPT_OBSCURA_BIN: obscuraPath,
     };
 
     const invalidPort = spawnSync(
@@ -173,11 +236,15 @@ process.on("SIGTERM", () => {
       ],
       { cwd: lifecycleRoot, env },
     );
-    assert.match(setup.stdout, /conversation-reader-mcp is running/);
+    assert.match(setup.stdout, /read-my-chatgpt is running/);
+    assert.match(
+      setup.stderr,
+      /Migrated the previous conversation-reader-mcp installation/,
+    );
 
     const serviceConfigPath = join(
       xdgConfigHome,
-      "conversation-reader-mcp",
+      "read-my-chatgpt",
       "service.json",
     );
     const serviceConfig = JSON.parse(
@@ -185,14 +252,44 @@ process.on("SIGTERM", () => {
     );
     assert.equal(
       serviceConfig.READ_MY_CHATGPT_ACCESS_TOKEN,
-      "package-test-access-token",
+      "legacy-access-token",
     );
     assert.equal(
       serviceConfig.READ_MY_CHATGPT_MCP_BEARER_TOKEN,
-      "package-test-mcp-token",
+      "legacy-mcp-token",
     );
     assert.equal(serviceConfig.READ_MY_CHATGPT_MCP_PORT, port);
+    assert.equal(
+      serviceConfig.READ_MY_CHATGPT_OBSCURA_BIN,
+      join(
+        xdgDataHome,
+        "read-my-chatgpt",
+        "obscura",
+        "v0.1.10",
+        `${process.platform}-${process.arch}`,
+        "obscura",
+      ),
+    );
+    assert.equal(
+      serviceConfig.READ_MY_CHATGPT_OBSCURA_STORAGE_DIR,
+      join(xdgDataHome, "read-my-chatgpt", "obscura-profile"),
+    );
     assert.equal(statSync(serviceConfigPath).mode & 0o777, 0o600);
+    assert.equal(existsSync(legacyConfigDirectory), false);
+    assert.equal(existsSync(legacyDataDirectory), false);
+    assert.equal(existsSync(legacyServiceDefinition), false);
+    assert.equal(
+      readFileSync(
+        join(
+          xdgDataHome,
+          "read-my-chatgpt",
+          "obscura-profile",
+          "migration-marker",
+        ),
+        "utf8",
+      ),
+      "preserve me\n",
+    );
 
     const serviceDefinition =
       process.platform === "darwin"
@@ -200,13 +297,13 @@ process.on("SIGTERM", () => {
             home,
             "Library",
             "LaunchAgents",
-            "io.github.async23.conversation-reader-mcp.plist",
+            "io.github.async23.read-my-chatgpt.plist",
           )
         : join(
             xdgConfigHome,
             "systemd",
             "user",
-            "conversation-reader-mcp.service",
+            "read-my-chatgpt.service",
           );
     assert.equal(existsSync(serviceDefinition), true);
 
@@ -218,7 +315,7 @@ process.on("SIGTERM", () => {
     const cursorConfigPath = join(home, ".cursor", "mcp.json");
     assert.match(
       readFileSync(cursorConfigPath, "utf8"),
-      /conversation-reader/,
+      /read-my-chatgpt/,
     );
 
     const doctor = run(executable, ["doctor", "--json"], {
@@ -242,7 +339,7 @@ process.on("SIGTERM", () => {
     assert.equal(existsSync(serviceDefinition), false);
     assert.doesNotMatch(
       readFileSync(cursorConfigPath, "utf8"),
-      /conversation-reader/,
+      /read-my-chatgpt/,
     );
 
     const managerCommands = readFileSync(serviceLog, "utf8");
@@ -327,6 +424,7 @@ try {
   assert.match(listing, /package\/CHANGELOG\.md/);
   assert.match(listing, /package\/THIRD_PARTY_NOTICES\.md/);
   assert.match(listing, /package\/licenses\/OBSCURA-APACHE-2\.0\.txt/);
+  assert.match(listing, /package\/dist\/install-migration\.js/);
   assert.match(listing, /package\/dist\/obscura-installer\.js/);
   assert.doesNotMatch(listing, /package\/src\//);
   assert.doesNotMatch(listing, /package\/\.env$/m);
@@ -353,14 +451,14 @@ try {
   const installedPackageDirectory = join(
     installDirectory,
     "node_modules",
-    "conversation-reader-mcp",
+    "read-my-chatgpt",
   );
   const installedPackage = JSON.parse(
     readFileSync(join(installedPackageDirectory, "package.json"), "utf8"),
   );
-  assert.equal(installedPackage.name, "conversation-reader-mcp");
+  assert.equal(installedPackage.name, "read-my-chatgpt");
   const binTarget =
-    installedPackage.bin?.["conversation-reader-mcp"];
+    installedPackage.bin?.["read-my-chatgpt"];
   assert.equal(binTarget, "dist/index.js");
   assert.match(
     readFileSync(join(installedPackageDirectory, ".env.example"), "utf8"),
@@ -371,10 +469,10 @@ try {
     installDirectory,
     "node_modules",
     ".bin",
-    "conversation-reader-mcp",
+    "read-my-chatgpt",
   );
   const help = run(executable, ["--help"], { cwd: temporaryRoot });
-  assert.match(help.stdout, /conversation-reader-mcp setup/);
+  assert.match(help.stdout, /read-my-chatgpt setup/);
   const version = run(executable, ["--version"], {
     cwd: temporaryRoot,
   });
@@ -395,7 +493,7 @@ try {
   assert.equal(smoke.status, 0, smoke.stderr || smoke.stdout);
   assert.match(
     smoke.stderr,
-    /\[conversation-reader-mcp\] ready on stdio/,
+    /\[read-my-chatgpt\] ready on stdio/,
   );
 
   await runLifecycle(executable, temporaryRoot);

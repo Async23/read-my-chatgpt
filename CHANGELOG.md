@@ -4,6 +4,15 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-21
+
+### Changed
+
+- Adopted `read-my-chatgpt` as the GitHub repository, npm package, CLI,
+  MCP server, and local service name.
+- Added automatic migration from `conversation-reader-mcp` service files,
+  local data, logs, and AI client entries.
+
 ## [0.1.1] - 2026-07-21
 
 ### Added
@@ -28,6 +37,7 @@
   CLI, OpenCode, and Pi.
 - Read-only conversation listing, retrieval, and title search tools.
 
-[Unreleased]: https://github.com/Async23/conversation-reader-mcp/compare/v0.1.1...HEAD
-[0.1.1]: https://github.com/Async23/conversation-reader-mcp/compare/v0.1.0...v0.1.1
-[0.1.0]: https://github.com/Async23/conversation-reader-mcp/releases/tag/v0.1.0
+[Unreleased]: https://github.com/Async23/read-my-chatgpt/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/Async23/read-my-chatgpt/compare/v0.1.1...v0.2.0
+[0.1.1]: https://github.com/Async23/read-my-chatgpt/compare/v0.1.0...v0.1.1
+[0.1.0]: https://github.com/Async23/read-my-chatgpt/releases/tag/v0.1.0

@@ -1,5 +1,5 @@
 /**
- * Conversation Reader MCP — tool surface (live, read-only)
+ * Read My ChatGPT — MCP tool surface (live, read-only)
  *
  * Tools:
  *   list_conversations
@@ -18,6 +18,7 @@ import {
   type ConversationListResponse,
 } from "./chatgpt-client.js";
 import { ConfigError, type Config } from "./config.js";
+import { SERVICE_NAME } from "./install-paths.js";
 import { activeBranchTranscript } from "./transcript.js";
 import { PACKAGE_VERSION } from "./version.js";
 
@@ -116,7 +117,7 @@ export function createReadMyChatGptMcpServer(
   client: ChatGPTClient,
 ): McpServer {
   const server = new McpServer({
-    name: "conversation-reader-mcp",
+    name: SERVICE_NAME,
     version: PACKAGE_VERSION,
   });
 

@@ -1,10 +1,10 @@
 {
-  "name": "conversation-reader-mcp",
-  "version": "0.1.1",
+  "name": "read-my-chatgpt",
+  "version": "0.2.0",
   "description": "Local read-only MCP bridge for your ChatGPT web conversation history",
   "type": "module",
   "bin": {
-    "conversation-reader-mcp": "dist/index.js"
+    "read-my-chatgpt": "dist/index.js"
   },
   "files": [
     "dist",
@@ -43,11 +43,11 @@
   "author": "Async23",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Async23/conversation-reader-mcp.git"
+    "url": "git+https://github.com/Async23/read-my-chatgpt.git"
   },
-  "homepage": "https://github.com/Async23/conversation-reader-mcp#readme",
+  "homepage": "https://github.com/Async23/read-my-chatgpt#readme",
   "bugs": {
-    "url": "https://github.com/Async23/conversation-reader-mcp/issues"
+    "url": "https://github.com/Async23/read-my-chatgpt/issues"
   },
   "license": "MIT",
   "publishConfig": {
