@@ -9,6 +9,10 @@ Use GitHub's **Security → Report a vulnerability** flow for this repository.
 Include only the minimum reproduction data and replace all real credentials
 with test values.
 
+We aim to acknowledge a complete report within seven days. Fix timing depends
+on severity, reproducibility, and upstream behavior. Please allow time for a
+coordinated fix before public disclosure.
+
 ## Supported versions
 
 Only the latest published version receives security fixes.

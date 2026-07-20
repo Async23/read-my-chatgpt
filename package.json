@@ -9,6 +9,7 @@
   "files": [
     "dist",
     ".env.example",
+    "CHANGELOG.md",
     "SECURITY.md",
     "THIRD_PARTY_NOTICES.md",
     "licenses"
@@ -20,9 +21,11 @@
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
     "test": "tsx --test test/*.test.ts",
+    "test:coverage": "node --import tsx --test --experimental-test-coverage --test-coverage-lines=70 --test-coverage-functions=65 --test-coverage-branches=60 test/*.test.ts",
     "test:package": "node scripts/verify-package.mjs",
     "test:obscura-download": "npm run build && node scripts/verify-obscura-download.mjs",
     "typecheck": "tsc -p tsconfig.test.json",
+    "check": "npm run typecheck && npm run test:coverage && npm run build && npm run test:package",
     "smoke": "tsx src/smoke.ts",
     "smoke:stability": "tsx src/stability-smoke.ts",
     "prepack": "npm run build"
