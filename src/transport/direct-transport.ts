@@ -2,6 +2,7 @@ import type {
   ChatGPTTransport,
   TransportResponse,
 } from "./chatgpt-transport.js";
+import { PACKAGE_VERSION } from "../version.js";
 
 export class DirectChatGPTTransport implements ChatGPTTransport {
   private static readonly requestTimeoutMs = 20_000;
@@ -26,7 +27,7 @@ export class DirectChatGPTTransport implements ChatGPTTransport {
       headers: {
         Authorization: `Bearer ${this.accessToken}`,
         Accept: "application/json",
-        "User-Agent": "conversation-reader-mcp/0.1.0",
+        "User-Agent": `conversation-reader-mcp/${PACKAGE_VERSION}`,
       },
       signal: AbortSignal.timeout(
         DirectChatGPTTransport.requestTimeoutMs,

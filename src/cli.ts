@@ -42,8 +42,9 @@ import {
   type RunningMcpServer,
   startStdioMcpServer,
 } from "./stdio-server.js";
+import { PACKAGE_VERSION } from "./version.js";
 
-export const CLI_VERSION = "0.1.0";
+export const CLI_VERSION = PACKAGE_VERSION;
 const DEFAULT_PORT = 47_831;
 const PRODUCT = "conversation-reader-mcp";
 

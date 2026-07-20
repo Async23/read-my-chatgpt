@@ -1,6 +1,6 @@
 {
   "name": "conversation-reader-mcp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Local read-only MCP bridge for your ChatGPT web conversation history",
   "type": "module",
   "bin": {
