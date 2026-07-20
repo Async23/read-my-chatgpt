@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-07-21
+
 ### Added
 
 - Public contribution, support, issue, and pull request guidance.
@@ -26,5 +28,6 @@
   CLI, OpenCode, and Pi.
 - Read-only conversation listing, retrieval, and title search tools.
 
-[Unreleased]: https://github.com/Async23/conversation-reader-mcp/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Async23/conversation-reader-mcp/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/Async23/conversation-reader-mcp/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/Async23/conversation-reader-mcp/releases/tag/v0.1.0

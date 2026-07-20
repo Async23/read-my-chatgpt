@@ -19,6 +19,7 @@ import {
 } from "./chatgpt-client.js";
 import { ConfigError, type Config } from "./config.js";
 import { activeBranchTranscript } from "./transcript.js";
+import { PACKAGE_VERSION } from "./version.js";
 
 function jsonResult(data: unknown, isError = false) {
   return {
@@ -116,7 +117,7 @@ export function createReadMyChatGptMcpServer(
 ): McpServer {
   const server = new McpServer({
     name: "conversation-reader-mcp",
-    version: "0.1.0",
+    version: PACKAGE_VERSION,
   });
 
   server.registerTool(
