@@ -2,9 +2,11 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { createServer } from "node:net";
 import WebSocket from "ws";
 import type {
+  BinaryTransportResponse,
   ChatGPTTransport,
   TransportResponse,
 } from "./chatgpt-transport.js";
+import { assertAllowedAssetUrl } from "./asset-url.js";
 
 type CdpMessage = {
   id?: number;
@@ -339,6 +341,10 @@ type StoredResponseMetadata = {
   bodyLength: number;
 };
 
+type StoredBinaryResponseMetadata = StoredResponseMetadata & {
+  byteLength: number;
+};
+
 function isStoredResponseMetadata(
   value: unknown,
 ): value is StoredResponseMetadata {
@@ -352,6 +358,20 @@ function isStoredResponseMetadata(
     Object.values(value.headers).every(
       (header) => typeof header === "string",
     )
+  );
+}
+
+function isStoredBinaryResponseMetadata(
+  value: unknown,
+): value is StoredBinaryResponseMetadata {
+  if (!isStoredResponseMetadata(value)) return false;
+  const byteLength = (
+    value as StoredResponseMetadata & { byteLength?: unknown }
+  ).byteLength;
+  return (
+    typeof byteLength === "number" &&
+    Number.isSafeInteger(byteLength) &&
+    byteLength >= 0
   );
 }
 
@@ -369,7 +389,8 @@ function assertAllowedBackendUrl(
   }
   const allowed =
     url.pathname === "/backend-api/conversations" ||
-    url.pathname.startsWith("/backend-api/conversation/");
+    url.pathname.startsWith("/backend-api/conversation/") ||
+    url.pathname.startsWith("/backend-api/files/download/");
   if (!allowed) {
     throw new Error(`ChatGPT endpoint is not allowlisted: ${url.pathname}`);
   }
@@ -514,9 +535,14 @@ export class ObscuraChatGPTTransport implements ChatGPTTransport {
     return this.enqueue(() => this.performGet(path));
   }
 
-  private enqueue(
-    request: () => Promise<TransportResponse>,
-  ): Promise<TransportResponse> {
+  getBinary(
+    url: string,
+    maxBytes: number,
+  ): Promise<BinaryTransportResponse> {
+    return this.enqueue(() => this.performGetBinary(url, maxBytes));
+  }
+
+  private enqueue<T>(request: () => Promise<T>): Promise<T> {
     if (this.closed) {
       return Promise.reject(new Error("Obscura transport is closed"));
     }
@@ -724,6 +750,181 @@ export class ObscuraChatGPTTransport implements ChatGPTTransport {
         );
       }
 
+      return {
+        status: response.status,
+        headers: response.headers,
+        body,
+      };
+    } finally {
+      await this.cdp
+        .send(
+          "Runtime.evaluate",
+          {
+            expression:
+              "(function(){" +
+              `const element=document.getElementById(${JSON.stringify(responseSlot)});` +
+              "if(element)element.remove();" +
+              "return true;" +
+              "})()",
+            returnByValue: true,
+          },
+          this.sessionId,
+          1_000,
+        )
+        .catch(() => undefined);
+    }
+  }
+
+  private async performGetBinary(
+    value: string,
+    maxBytes: number,
+  ): Promise<BinaryTransportResponse> {
+    if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) {
+      throw new Error("Asset byte limit must be a positive integer");
+    }
+
+    const url = assertAllowedAssetUrl(this.baseUrl, value);
+    const sameOrigin = url.origin === new URL(this.baseUrl).origin;
+    const responseSlot =
+      `__read_my_chatgpt_response_${this.nextResponseSlot++}`;
+    const setAuthorization = sameOrigin
+      ? `xhr.setRequestHeader("Authorization","Bearer "+${JSON.stringify(this.accessToken)});`
+      : "";
+    const expression =
+      "new Promise(function(resolve){" +
+      "let settled=false;" +
+      "const finish=function(value){if(settled)return false;settled=true;resolve(JSON.stringify(value));return true;};" +
+      "const xhr=new XMLHttpRequest();" +
+      `xhr.open("GET",${JSON.stringify(url.toString())},true);` +
+      `xhr.withCredentials=${sameOrigin ? "true" : "false"};` +
+      setAuthorization +
+      'xhr.setRequestHeader("Accept","*/*");' +
+      "xhr.responseType=\"blob\";" +
+      `xhr.timeout=${this.requestTimeoutMs};` +
+      "const tooLarge=function(size){if(finish({tooLarge:true,byteLength:size}))xhr.abort();};" +
+      "xhr.onreadystatechange=function(){if(xhr.readyState!==2||settled)return;" +
+      'const declared=Number(xhr.getResponseHeader("content-length"));' +
+      `if(Number.isFinite(declared)&&declared>${maxBytes})tooLarge(declared);};` +
+      `xhr.onprogress=function(event){if(!settled&&event.loaded>${maxBytes})tooLarge(event.loaded);};` +
+      "xhr.onload=function(){if(settled)return;try{" +
+      "const responseBlob=xhr.response;" +
+      "const byteLength=Number(responseBlob&&responseBlob.size||0);" +
+      `if(byteLength>${maxBytes}){tooLarge(byteLength);return;}` +
+      "const reader=new FileReader();" +
+      "reader.onload=function(){try{" +
+      'const dataUrl=String(reader.result||"");' +
+      'const comma=dataUrl.indexOf(",");' +
+      'if(comma<0)throw new Error("invalid FileReader data URL");' +
+      "const responseBody=dataUrl.slice(comma+1);" +
+      'const responseElement=document.createElement("pre");' +
+      `responseElement.id=${JSON.stringify(responseSlot)};` +
+      "responseElement.hidden=true;" +
+      "responseElement.textContent=responseBody;" +
+      "(document.body||document.documentElement).appendChild(responseElement);" +
+      "finish({" +
+      "status:xhr.status," +
+      'headers:{"content-type":xhr.getResponseHeader("content-type")||"",' +
+      '"content-length":xhr.getResponseHeader("content-length")||"",' +
+      '"content-disposition":xhr.getResponseHeader("content-disposition")||""},' +
+      "bodyLength:responseBody.length,byteLength:byteLength});" +
+      "}catch(error){finish({transportError:{" +
+      'name:"ResponseError",' +
+      'message:String(error&&error.message||error||"invalid FileReader response")' +
+      "}});}};" +
+      "reader.onerror=function(){finish({transportError:{" +
+      'name:"ResponseError",message:"Obscura FileReader failed"}});};' +
+      "reader.readAsDataURL(responseBlob);" +
+      "}catch(error){finish({transportError:{" +
+      'name:"ResponseError",' +
+      'message:String(error&&error.message||error||"invalid XHR response")' +
+      "}});}};" +
+      "xhr.onerror=function(){finish({transportError:{" +
+      'name:"NetworkError",message:"Obscura XMLHttpRequest failed"}});};' +
+      "xhr.ontimeout=function(){finish({transportError:{" +
+      `name:"TimeoutError",message:"ChatGPT asset request timed out after ${this.requestTimeoutMs}ms"}});};` +
+      "xhr.onabort=function(){finish({transportError:{" +
+      'name:"AbortError",message:"Obscura XMLHttpRequest was aborted"}});};' +
+      "xhr.send();" +
+      "})";
+
+    const evaluated = await this.cdp.send<EvaluateResult>(
+      "Runtime.evaluate",
+      { expression, awaitPromise: true, returnByValue: true },
+      this.sessionId,
+      this.requestTimeoutMs + 1_000,
+    );
+    const response: unknown = JSON.parse(
+      evaluateValue(evaluated, "download a ChatGPT asset"),
+    );
+
+    try {
+      if (isRecord(response) && response.tooLarge === true) {
+        throw new Error(`Asset exceeds the ${maxBytes} byte limit`);
+      }
+
+      const transportError =
+        isRecord(response) && isRecord(response.transportError)
+          ? response.transportError
+          : null;
+      if (transportError) {
+        const name =
+          typeof transportError.name === "string"
+            ? transportError.name
+            : "NetworkError";
+        if (name === "AbortError" || name === "TimeoutError") {
+          throw new Error(
+            `ChatGPT asset request timed out after ${this.requestTimeoutMs}ms`,
+          );
+        }
+        throw new Error(`Asset download failed (${name})`);
+      }
+
+      if (!isStoredBinaryResponseMetadata(response)) {
+        throw new Error("Obscura returned invalid asset response metadata");
+      }
+      const maxBase64Chars = Math.ceil(maxBytes / 3) * 4;
+      if (
+        response.byteLength > maxBytes ||
+        response.bodyLength > maxBase64Chars ||
+        response.bodyLength > MAX_RESPONSE_BODY_CHARS
+      ) {
+        throw new Error(`Asset exceeds the ${maxBytes} byte limit`);
+      }
+
+      let base64 = "";
+      for (
+        let offset = 0;
+        offset < response.bodyLength;
+        offset += RESPONSE_CHUNK_CHARS
+      ) {
+        const end = Math.min(
+          offset + RESPONSE_CHUNK_CHARS,
+          response.bodyLength,
+        );
+        const chunkResult = await this.cdp.send<EvaluateResult>(
+          "Runtime.evaluate",
+          {
+            expression:
+              `String((document.getElementById(${JSON.stringify(responseSlot)})||{}).textContent||"")` +
+              `.slice(${offset},${end})`,
+            returnByValue: true,
+          },
+          this.sessionId,
+          5_000,
+        );
+        base64 += evaluateValue(
+          chunkResult,
+          "read a ChatGPT asset response chunk",
+        );
+      }
+
+      if (base64.length !== response.bodyLength) {
+        throw new Error("Obscura returned an incomplete asset response");
+      }
+      const body = Uint8Array.from(Buffer.from(base64, "base64"));
+      if (body.byteLength > maxBytes) {
+        throw new Error(`Asset exceeds the ${maxBytes} byte limit`);
+      }
       return {
         status: response.status,
         headers: response.headers,

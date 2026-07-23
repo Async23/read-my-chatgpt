@@ -14,6 +14,7 @@ test("uses an owned Obscura sidecar by default", () => {
   assert.equal(config.mcpSessionIdleMs, 1_800_000);
   assert.equal(config.obscuraBinary, undefined);
   assert.equal(config.obscuraCdpUrl, undefined);
+  assert.equal(config.maxAssetBytes, 10 * 1024 * 1024);
 });
 
 test("rejects unknown ChatGPT transports", () => {
@@ -93,5 +94,26 @@ test("rejects an unsafe HTTP MCP session idle timeout", () => {
     (error) =>
       error instanceof ConfigError &&
       error.message.includes("at least 1000"),
+  );
+});
+
+test("loads and validates the asset byte limit", () => {
+  assert.equal(
+    loadConfig({
+      READ_MY_CHATGPT_ACCESS_TOKEN: "test-token",
+      READ_MY_CHATGPT_MAX_ASSET_BYTES: "2097152",
+    }).maxAssetBytes,
+    2 * 1024 * 1024,
+  );
+
+  assert.throws(
+    () =>
+      loadConfig({
+        READ_MY_CHATGPT_ACCESS_TOKEN: "test-token",
+        READ_MY_CHATGPT_MAX_ASSET_BYTES: "33554433",
+      }),
+    (error) =>
+      error instanceof ConfigError &&
+      error.message.includes("READ_MY_CHATGPT_MAX_ASSET_BYTES"),
   );
 });

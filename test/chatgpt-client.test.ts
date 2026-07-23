@@ -7,6 +7,7 @@ import {
   ChatGPTTimeoutError,
 } from "../src/chatgpt-client.js";
 import type {
+  BinaryTransportResponse,
   ChatGPTTransport,
   TransportResponse,
 } from "../src/transport/chatgpt-transport.js";
@@ -16,6 +17,10 @@ class StaticTransport implements ChatGPTTransport {
 
   async get(): Promise<TransportResponse> {
     return this.response;
+  }
+
+  async getBinary(): Promise<BinaryTransportResponse> {
+    throw new Error("Unexpected binary request");
   }
 
   async close(): Promise<void> {}
@@ -41,6 +46,45 @@ class TimeoutThenSuccessTransport implements ChatGPTTransport {
         current_node: null,
         mapping: {},
       }),
+    };
+  }
+
+  async getBinary(): Promise<BinaryTransportResponse> {
+    throw new Error("Unexpected binary request");
+  }
+
+  async close(): Promise<void> {}
+}
+
+class FileTransport implements ChatGPTTransport {
+  requestedPath = "";
+  requestedBinaryUrl = "";
+
+  constructor(private readonly failBinary = false) {}
+
+  async get(path: string): Promise<TransportResponse> {
+    this.requestedPath = path;
+    return {
+      status: 200,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        status: "success",
+        download_url: "https://files.example.com/image?signature=secret",
+        file_name: "image.png",
+        mime_type: "image/png",
+      }),
+    };
+  }
+
+  async getBinary(url: string): Promise<BinaryTransportResponse> {
+    this.requestedBinaryUrl = url;
+    if (this.failBinary) {
+      throw new Error(`failed for ${url}`);
+    }
+    return {
+      status: 200,
+      headers: { "content-type": "image/png" },
+      body: Uint8Array.from([137, 80, 78, 71]),
     };
   }
 
@@ -104,5 +148,37 @@ test("surfaces repeated transport timeouts with a stable error code", async () =
     (error) =>
       error instanceof ChatGPTTimeoutError &&
       error.code === "upstream_timeout",
+  );
+});
+
+test("downloads conversation files without returning the signed URL", async () => {
+  const transport = new FileTransport();
+  const client = new ChatGPTClient(transport);
+
+  const file = await client.downloadConversationFile(
+    "conversation/id",
+    "file_image",
+    100,
+  );
+
+  assert.equal(
+    transport.requestedPath,
+    "/backend-api/files/download/file_image?conversation_id=conversation%2Fid&inline=false",
+  );
+  assert.match(transport.requestedBinaryUrl, /signature=secret/);
+  assert.equal(file.fileName, "image.png");
+  assert.equal(file.declaredMimeType, "image/png");
+  assert.equal("download_url" in file, false);
+});
+
+test("redacts signed asset URLs from download errors", async () => {
+  const client = new ChatGPTClient(new FileTransport(true));
+
+  await assert.rejects(
+    () => client.downloadConversationFile("conversation", "file_image", 100),
+    (error) =>
+      error instanceof ChatGPTApiError &&
+      !error.message.includes("files.example.com") &&
+      !error.message.includes("signature=secret"),
   );
 });

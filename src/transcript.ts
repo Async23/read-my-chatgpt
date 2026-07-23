@@ -1,10 +1,27 @@
-import type { ConversationDetail, ConversationMessageNode } from "./chatgpt-client.js";
+import type {
+  ConversationDetail,
+  ConversationMessageNode,
+  ConversationTimestamp,
+} from "./chatgpt-client.js";
+import {
+  inferConversationCompletionStatus,
+  inferConversationExperience,
+  type ConversationCompletionStatus,
+  type ConversationExperience,
+} from "./conversation-experience.js";
+import {
+  extractMessageContent,
+  type ConversationAssetReference,
+  type MessageRichContent,
+} from "./rich-content.js";
 
 export type TranscriptMessage = {
   role: string;
   content: string;
+  content_type: string | null;
   created_at: string | null;
   message_id: string | null;
+  rich_content?: MessageRichContent;
 };
 
 export type ActiveTranscript = {
@@ -13,12 +30,21 @@ export type ActiveTranscript = {
   updated_at: string | null;
   created_at: string | null;
   branch: "active";
+  experience: ConversationExperience;
+  completion_status: ConversationCompletionStatus;
+  async_status: string | null;
   message_count: number;
   truncated: boolean;
   messages: TranscriptMessage[];
 };
 
-function isoFromUnix(ts: number | null | undefined): string | null {
+function isoFromTimestamp(
+  ts: ConversationTimestamp | undefined,
+): string | null {
+  if (typeof ts === "string") {
+    const ms = Date.parse(ts);
+    return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
+  }
   if (ts == null || !Number.isFinite(ts)) return null;
   // ChatGPT sometimes returns seconds, sometimes ms-ish; treat large values as ms.
   const ms = ts > 1e12 ? ts : ts * 1000;
@@ -29,59 +55,33 @@ function isoFromUnix(ts: number | null | undefined): string | null {
   }
 }
 
-function partsToText(parts: unknown[] | undefined): string {
-  if (!parts?.length) return "";
-  const chunks: string[] = [];
-  for (const part of parts) {
-    if (typeof part === "string") {
-      chunks.push(part);
-      continue;
-    }
-    if (part && typeof part === "object") {
-      const obj = part as Record<string, unknown>;
-      if (typeof obj.text === "string") {
-        chunks.push(obj.text);
-      } else if (typeof obj.content === "string") {
-        chunks.push(obj.content);
-      } else {
-        // Keep a compact JSON fallback for non-text parts (images, etc.).
-        try {
-          chunks.push(JSON.stringify(obj));
-        } catch {
-          // ignore
-        }
-      }
-    }
+const INTERNAL_CONTENT_TYPES = new Set([
+  "model_editable_context",
+  "reasoning_recap",
+  "thoughts",
+  "user_editable_context",
+]);
+
+function isVisibleDialogueNode(node: ConversationMessageNode): boolean {
+  const message = node.message;
+  const role = message?.author?.role;
+  if (!message || (role !== "user" && role !== "assistant")) return false;
+  if (message.metadata?.is_visually_hidden_from_conversation === true) {
+    return false;
   }
-  return chunks.join("\n");
+  const recipient =
+    typeof message.recipient === "string" ? message.recipient.trim() : "";
+  if (recipient && recipient !== "all") return false;
+  const contentType = message.content?.content_type;
+  return !contentType || !INTERNAL_CONTENT_TYPES.has(contentType);
 }
 
-function extractText(node: ConversationMessageNode): string {
-  const content = node.message?.content;
-  if (!content) return "";
-  if (Array.isArray(content.parts)) {
-    return partsToText(content.parts);
-  }
-  return "";
-}
-
-/**
- * Walk from current_node up via parent links, then reverse → chronological active branch.
- * Only includes user / assistant messages with non-empty visible text by default.
- */
-export function activeBranchTranscript(
+function activeBranchNodes(
   detail: ConversationDetail,
-  options: { maxMessages?: number } = {},
-): ActiveTranscript {
+): ConversationMessageNode[] {
   const mapping = detail.mapping ?? {};
-  const conversationId =
-    detail.conversation_id ?? detail.id ?? "unknown";
-  const maxMessages = options.maxMessages ?? 100;
-
   const chain: ConversationMessageNode[] = [];
   let cursor: string | null | undefined = detail.current_node;
-
-  // Safety cap against malformed cycles.
   const seen = new Set<string>();
   while (cursor && mapping[cursor] && !seen.has(cursor)) {
     seen.add(cursor);
@@ -89,24 +89,39 @@ export function activeBranchTranscript(
     chain.push(node);
     cursor = node.parent ?? null;
   }
-
   chain.reverse();
+  return chain;
+}
+
+/**
+ * Walk from current_node up via parent links, then reverse → chronological active branch.
+ * Includes visible user / assistant messages containing text or supported rich content.
+ */
+export function activeBranchTranscript(
+  detail: ConversationDetail,
+  options: { maxMessages?: number } = {},
+): ActiveTranscript {
+  const conversationId =
+    detail.conversation_id ?? detail.id ?? "unknown";
+  const maxMessages = options.maxMessages ?? 100;
 
   const messages: TranscriptMessage[] = [];
-  for (const node of chain) {
+  for (const node of activeBranchNodes(detail)) {
+    if (!isVisibleDialogueNode(node)) continue;
     const role = node.message?.author?.role ?? "unknown";
-    if (role !== "user" && role !== "assistant") {
-      // Skip system / tool / etc. for MVP "page-visible dialogue".
-      continue;
-    }
-    const text = extractText(node);
-    if (!text.trim()) continue;
-    messages.push({
+    const extracted = extractMessageContent(node, conversationId);
+    if (!extracted.text.trim() && !extracted.richContent) continue;
+    const message: TranscriptMessage = {
       role,
-      content: text,
-      created_at: isoFromUnix(node.message?.create_time ?? null),
+      content: extracted.text,
+      content_type: node.message?.content?.content_type ?? null,
+      created_at: isoFromTimestamp(node.message?.create_time ?? null),
       message_id: node.message?.id ?? node.id ?? null,
-    });
+    };
+    if (extracted.richContent) {
+      message.rich_content = extracted.richContent;
+    }
+    messages.push(message);
   }
 
   let truncated = false;
@@ -120,6 +135,7 @@ export function activeBranchTranscript(
       {
         role: "system",
         content: `[truncated ${messages.length - maxMessages} messages in the middle; total visible user/assistant messages: ${messages.length}]`,
+        content_type: "text",
         created_at: null,
         message_id: null,
       },
@@ -130,11 +146,32 @@ export function activeBranchTranscript(
   return {
     conversation_id: conversationId,
     title: detail.title?.trim() || "(untitled)",
-    updated_at: isoFromUnix(detail.update_time ?? null),
-    created_at: isoFromUnix(detail.create_time ?? null),
+    updated_at: isoFromTimestamp(detail.update_time ?? null),
+    created_at: isoFromTimestamp(detail.create_time ?? null),
     branch: "active",
+    experience: inferConversationExperience(detail),
+    completion_status: inferConversationCompletionStatus(detail),
+    async_status: detail.async_status ?? null,
     message_count: messages.length,
     truncated,
     messages: finalMessages,
   };
+}
+
+export function findActiveBranchAsset(
+  detail: ConversationDetail,
+  assetId: string,
+): ConversationAssetReference | null {
+  if (!/^asset_[A-Za-z0-9_-]{32}$/.test(assetId)) return null;
+  const conversationId =
+    detail.conversation_id ?? detail.id ?? "unknown";
+  for (const node of activeBranchNodes(detail)) {
+    if (!isVisibleDialogueNode(node)) continue;
+    const reference = extractMessageContent(
+      node,
+      conversationId,
+    ).assetReferences.find((candidate) => candidate.asset.asset_id === assetId);
+    if (reference) return reference;
+  }
+  return null;
 }

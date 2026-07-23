@@ -25,8 +25,10 @@ test("Obscura transport uses authenticated XHR instead of fetch", async (t) => {
   let browserWebSocketUrl = "";
   const requestExpressions: string[] = [];
   const chunkExpressions: string[] = [];
+  let stagedBody = "";
   const backendBody =
     `${JSON.stringify({ items: [] })}${" ".repeat(150_000)}`;
+  const binaryBody = Buffer.from([137, 80, 78, 71]);
   const httpServer = http.createServer((request, response) => {
     assert.equal(request.url, "/json/version");
     response.writeHead(200, { "content-type": "application/json" });
@@ -57,18 +59,31 @@ test("Obscura transport uses authenticated XHR instead of fetch", async (t) => {
           if (expression.includes("new XMLHttpRequest")) {
             requestExpressions.push(expression);
             if (expression.includes("timeout-case")) return;
-            value = JSON.stringify({
-              status: expression.includes("secret-token") ? 200 : 401,
-              headers: { "content-type": "application/json" },
-              bodyLength: backendBody.length,
-            });
+            if (expression.includes('responseType="blob"')) {
+              stagedBody = binaryBody.toString("base64");
+              value = JSON.stringify({
+                status: 200,
+                headers: { "content-type": "image/png" },
+                bodyLength: stagedBody.length,
+                // Transfer/blob size may differ from decoded bytes when the
+                // upstream response has content encoding.
+                byteLength: binaryBody.byteLength - 1,
+              });
+            } else {
+              stagedBody = backendBody;
+              value = JSON.stringify({
+                status: expression.includes("secret-token") ? 200 : 401,
+                headers: { "content-type": "application/json" },
+                bodyLength: stagedBody.length,
+              });
+            }
           } else if (expression.includes(".textContent||\"\").slice(")) {
             chunkExpressions.push(expression);
             const match = expression.match(
               /\.slice\((\d+),(\d+)\)$/,
             );
             assert.ok(match);
-            value = backendBody.slice(Number(match[1]), Number(match[2]));
+            value = stagedBody.slice(Number(match[1]), Number(match[2]));
           } else if (expression.includes("element.remove()")) {
             result = { result: { type: "boolean", value: true } };
             break;
@@ -129,6 +144,26 @@ test("Obscura transport uses authenticated XHR instead of fetch", async (t) => {
   assert.match(requestExpression, /Authorization/);
   assert.match(requestExpression, /xhr\.timeout=25/);
   assert.doesNotMatch(requestExpression, /\bfetch\(/);
+
+  const binary = await transport.getBinary(
+    "https://files.example.com/signed/image?token=private",
+    64,
+  );
+  assert.deepEqual([...binary.body], [...binaryBody]);
+  assert.equal(binary.headers["content-type"], "image/png");
+  const binaryExpression = requestExpressions.at(-1) ?? "";
+  assert.match(binaryExpression, /responseType=\"blob\"/);
+  assert.match(binaryExpression, /xhr\.withCredentials=false/);
+  assert.doesNotMatch(binaryExpression, /Authorization/);
+
+  await assert.rejects(
+    () =>
+      transport.getBinary(
+        "https://files.example.com/signed/image?token=private",
+        2,
+      ),
+    /exceeds the 2 byte limit/,
+  );
 
   const timeoutStarted = Date.now();
   await assert.rejects(

@@ -4,9 +4,11 @@
  * Tools:
  *   list_conversations
  *   get_conversation
+ *   get_asset
  *   search_conversations  (title-only)
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import {
   ChatGPTApiError,
@@ -16,8 +18,18 @@ import {
   ChatGPTTimeoutError,
   type ConversationListItem,
   type ConversationListResponse,
+  type ConversationTimestamp,
 } from "./chatgpt-client.js";
 import { ConfigError, type Config } from "./config.js";
+import {
+  inferConversationExperience,
+  type ConversationExperience,
+} from "./conversation-experience.js";
+import {
+  ConversationAssetError,
+  readConversationAsset,
+  type DownloadedConversationAsset,
+} from "./conversation-assets.js";
 import { SERVICE_NAME } from "./install-paths.js";
 import { activeBranchTranscript } from "./transcript.js";
 import { PACKAGE_VERSION } from "./version.js";
@@ -53,8 +65,47 @@ function errorResult(err: unknown) {
       true,
     );
   }
+  if (err instanceof ConversationAssetError) {
+    return jsonResult({ error: err.code, message: err.message }, true);
+  }
   const message = err instanceof Error ? err.message : String(err);
   return jsonResult({ error: "internal_error", message }, true);
+}
+
+function assetResult(
+  conversationId: string,
+  asset: DownloadedConversationAsset,
+): CallToolResult {
+  const { body, ...metadata } = asset;
+  const data = Buffer.from(body).toString("base64");
+  const summary = {
+    conversation_id: conversationId,
+    asset: metadata,
+    delivery: asset.kind === "image" ? "image" : "embedded_resource",
+  };
+  if (asset.kind === "image") {
+    return {
+      content: [
+        { type: "text", text: JSON.stringify(summary, null, 2) },
+        { type: "image", data, mimeType: asset.mime_type },
+      ],
+    };
+  }
+  return {
+    content: [
+      { type: "text", text: JSON.stringify(summary, null, 2) },
+      {
+        type: "resource",
+        resource: {
+          uri:
+            `read-my-chatgpt://conversation/${encodeURIComponent(conversationId)}` +
+            `/asset/${encodeURIComponent(asset.asset_id)}`,
+          mimeType: asset.mime_type,
+          blob: data,
+        },
+      },
+    ],
+  };
 }
 
 function normalizeItem(item: ConversationListItem) {
@@ -64,6 +115,8 @@ function normalizeItem(item: ConversationListItem) {
     create_time: item.create_time ?? null,
     update_time: item.update_time ?? null,
     is_archived: Boolean(item.is_archived),
+    experience: inferConversationExperience(item),
+    async_status: item.async_status ?? null,
   };
 }
 
@@ -94,8 +147,10 @@ function hasMoreConversations(
 type SearchHit = {
   conversation_id: string;
   title: string;
-  update_time: number | null;
+  update_time: ConversationTimestamp;
   is_archived: boolean;
+  experience: ConversationExperience;
+  async_status: string | null;
 };
 
 type SearchScope = {
@@ -106,10 +161,16 @@ type SearchScope = {
 };
 
 function sortableUpdateTime(hit: SearchHit): number {
-  return typeof hit.update_time === "number" &&
-    Number.isFinite(hit.update_time)
-    ? hit.update_time
-    : Number.NEGATIVE_INFINITY;
+  if (typeof hit.update_time === "number" && Number.isFinite(hit.update_time)) {
+    return hit.update_time > 1e12
+      ? hit.update_time
+      : hit.update_time * 1000;
+  }
+  if (typeof hit.update_time === "string") {
+    const parsed = Date.parse(hit.update_time);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return Number.NEGATIVE_INFINITY;
 }
 
 export function createReadMyChatGptMcpServer(
@@ -125,7 +186,7 @@ export function createReadMyChatGptMcpServer(
     "list_conversations",
     {
       description:
-        "List your ChatGPT web conversations (metadata only: id, title, timestamps). Use when you need recent chats or do not know a conversation_id. Does not return message bodies.",
+        "List your ChatGPT web Chat and Work conversations (metadata only: id, title, timestamps, experience). Use when you need recent conversations or do not know a conversation_id. Does not return message bodies.",
       inputSchema: {
         offset: z
           .number()
@@ -183,7 +244,7 @@ export function createReadMyChatGptMcpServer(
     "get_conversation",
     {
       description:
-        "Fetch one ChatGPT conversation and return the active branch only (the current visible user/assistant turn chain). Use after list_conversations or search_conversations when you have a conversation_id.",
+        "Fetch one completed ChatGPT Chat or Work conversation and return the active branch only (the current visible user/assistant turn chain). Text remains in messages[].content; links, web citations, Mermaid source, and image/file asset ids appear in messages[].rich_content when present. Internal reasoning, hidden events, and tool execution are omitted. Use get_asset to read an indexed image or file.",
       inputSchema: {
         conversation_id: z
           .string()
@@ -217,10 +278,43 @@ export function createReadMyChatGptMcpServer(
   );
 
   server.registerTool(
+    "get_asset",
+    {
+      description:
+        "Fetch one image or file attachment from a ChatGPT conversation. Use the conversation_id and asset_id returned by get_conversation in messages[].rich_content.assets. The asset must belong to the active visible branch; downloads are MIME-checked and size-limited.",
+      inputSchema: {
+        conversation_id: z
+          .string()
+          .min(1)
+          .describe("Conversation id used with get_conversation"),
+        asset_id: z
+          .string()
+          .regex(/^asset_[A-Za-z0-9_-]{32}$/)
+          .describe(
+            "Opaque asset id from messages[].rich_content.assets[].asset_id",
+          ),
+      },
+    },
+    async ({ conversation_id, asset_id }) => {
+      try {
+        const asset = await readConversationAsset(
+          client,
+          conversation_id,
+          asset_id,
+          config.maxAssetBytes,
+        );
+        return assetResult(conversation_id, asset);
+      } catch (err) {
+        return errorResult(err);
+      }
+    },
+  );
+
+  server.registerTool(
     "search_conversations",
     {
       description:
-        "Search your ChatGPT conversations by title only (MVP). Returns matching conversation ids and titles. For full dialogue content, call get_conversation next.",
+        "Search your ChatGPT Chat and Work conversations by title only (MVP). Returns matching conversation ids, titles, and experience. For full dialogue content, call get_conversation next.",
       inputSchema: {
         query: z
           .string()
@@ -305,6 +399,8 @@ export function createReadMyChatGptMcpServer(
                 title,
                 update_time: item.update_time ?? null,
                 is_archived: item.is_archived ?? scope.isArchived,
+                experience: inferConversationExperience(item),
+                async_status: item.async_status ?? null,
               });
               if (scope.hits.length >= hitLimit) {
                 scope.done = true;

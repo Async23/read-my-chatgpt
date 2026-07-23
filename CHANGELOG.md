@@ -4,6 +4,25 @@
 
 ## [Unreleased]
 
+### Added
+
+- Classify ChatGPT conversations as `chat`, `work`, or `unknown` from live Web
+  response signals.
+- Read completed Work conversation dialogue while omitting hidden agent events,
+  internal reasoning, and tool execution.
+- Expose conversation experience and completion status through MCP results.
+- Extract structured links, web citations, Mermaid source, images, and ordinary
+  file attachments from visible conversation messages.
+- Add `get_asset` for size-limited, MIME-checked MCP image/resource delivery
+  without exposing signed upstream download URLs.
+
+### Fixed
+
+- Wait for an existing launchd process to exit before bootstrapping a replacement
+  during same-service upgrades.
+- Treat decoded asset bytes as authoritative when HTTP content encoding makes the
+  transfer length differ from the delivered file size.
+
 ## [0.2.1] - 2026-07-21
 
 ### Fixed
