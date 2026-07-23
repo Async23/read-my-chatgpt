@@ -4,6 +4,12 @@ export type TransportResponse = {
   body: string;
 };
 
+export type BinaryTransportResponse = {
+  status: number;
+  headers: Record<string, string>;
+  body: Uint8Array;
+};
+
 /**
  * Narrow transport seam for the read-only ChatGPT Web API endpoints.
  *
@@ -12,5 +18,9 @@ export type TransportResponse = {
  */
 export interface ChatGPTTransport {
   get(path: string): Promise<TransportResponse>;
+  getBinary(
+    url: string,
+    maxBytes: number,
+  ): Promise<BinaryTransportResponse>;
   close(): Promise<void>;
 }

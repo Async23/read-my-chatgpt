@@ -40,6 +40,7 @@ test("returns only the active conversation branch", () => {
 
   const transcript = activeBranchTranscript(detail);
   assert.equal(transcript.branch, "active");
+  assert.equal(transcript.experience, "unknown");
   assert.equal(transcript.messages.length, 2);
   assert.equal(transcript.messages[0]?.content, "Hello");
   assert.equal(transcript.messages[1]?.content, "Active branch answer");
@@ -75,4 +76,116 @@ test("still omits messages whose content is only whitespace", () => {
 
   const transcript = activeBranchTranscript(detail);
   assert.deepEqual(transcript.messages, []);
+});
+
+test("reads completed Work dialogue while omitting internal agent activity", () => {
+  const detail: ConversationDetail = {
+    conversation_id: "work-1",
+    title: "Synthetic Work task",
+    conversation_origin: "tpp",
+    default_model_slug: "gpt-example-wm",
+    async_status: null,
+    current_node: "final",
+    mapping: {
+      root: { id: "root", parent: null, children: ["user"], message: null },
+      user: {
+        id: "user",
+        parent: "root",
+        children: ["hidden"],
+        message: {
+          id: "user",
+          author: { role: "user" },
+          recipient: "all",
+          content: { content_type: "text", parts: ["Create a report"] },
+        },
+      },
+      hidden: {
+        id: "hidden",
+        parent: "user",
+        children: ["thoughts"],
+        message: {
+          id: "hidden",
+          author: { role: "assistant" },
+          recipient: "SubAgentActivityThreadItem.started",
+          content: { content_type: "text", text: "internal activity" },
+          metadata: {
+            is_visually_hidden_from_conversation: true,
+            codex_sub_agent_activity: { kind: "started" },
+          },
+        },
+      },
+      thoughts: {
+        id: "thoughts",
+        parent: "hidden",
+        children: ["call"],
+        message: {
+          id: "thoughts",
+          author: { role: "assistant" },
+          recipient: "all",
+          content: {
+            content_type: "thoughts",
+            thoughts: [{ summary: "private reasoning" }],
+          },
+        },
+      },
+      call: {
+        id: "call",
+        parent: "thoughts",
+        children: ["output"],
+        message: {
+          id: "call",
+          author: { role: "assistant" },
+          recipient: "container.exec",
+          content: { content_type: "code", text: "internal command" },
+        },
+      },
+      output: {
+        id: "output",
+        parent: "call",
+        children: ["final"],
+        message: {
+          id: "output",
+          author: { role: "tool" },
+          recipient: "all",
+          content: {
+            content_type: "execution_output",
+            text: "internal tool output",
+          },
+        },
+      },
+      final: {
+        id: "final",
+        parent: "output",
+        children: [],
+        message: {
+          id: "final",
+          author: { role: "assistant" },
+          recipient: "all",
+          status: "finished_successfully",
+          end_turn: true,
+          content: {
+            content_type: "text",
+            text: "Finished report",
+          },
+          metadata: { working_turn_id: "synthetic-turn" },
+        },
+      },
+    },
+  };
+
+  const transcript = activeBranchTranscript(detail);
+  assert.equal(transcript.experience, "work");
+  assert.equal(transcript.completion_status, "completed");
+  assert.equal(transcript.async_status, null);
+  assert.deepEqual(
+    transcript.messages.map(({ role, content, content_type }) => ({
+      role,
+      content,
+      content_type,
+    })),
+    [
+      { role: "user", content: "Create a report", content_type: "text" },
+      { role: "assistant", content: "Finished report", content_type: "text" },
+    ],
+  );
 });

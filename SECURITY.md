@@ -22,3 +22,9 @@ Only the latest published version receives security fixes.
 The HTTP MCP endpoint is intentionally limited to loopback and protected with a
 generated Bearer token. Reports that require binding it to a LAN or public
 interface are outside the supported security model.
+
+Conversation assets are resolved only after their opaque id is found on the
+active visible branch of the requested conversation. Downloads have a byte
+limit and MIME checks. Cross-origin signed download URLs must use HTTPS and
+never receive the ChatGPT access token; same-origin URLs may reuse it. Signed
+URLs are not returned in MCP results or error messages.

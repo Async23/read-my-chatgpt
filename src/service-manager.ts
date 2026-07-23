@@ -188,6 +188,9 @@ async function installLaunchAgent(
   options: ServiceInstallOptions,
 ): Promise<void> {
   const domain = `gui/${options.uid ?? process.getuid?.()}`;
+  const target = `${domain}/${options.paths.launchdLabel}`;
+  const status = await runAllowFailure("launchctl", ["print", target]);
+  const previousPid = launchdPid(status.stdout);
   await mkdir(dirname(options.paths.launchAgentPath), {
     recursive: true,
   });
@@ -204,8 +207,11 @@ async function installLaunchAgent(
   );
   await runAllowFailure("launchctl", [
     "bootout",
-    `${domain}/${options.paths.launchdLabel}`,
+    target,
   ]);
+  if (previousPid !== undefined) {
+    await waitForPidExit(previousPid, 30_000);
+  }
   await run("launchctl", [
     "bootstrap",
     domain,
@@ -214,7 +220,7 @@ async function installLaunchAgent(
   await run("launchctl", [
     "kickstart",
     "-k",
-    `${domain}/${options.paths.launchdLabel}`,
+    target,
   ]);
 }
 

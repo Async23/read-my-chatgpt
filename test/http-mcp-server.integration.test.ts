@@ -136,6 +136,7 @@ test("one HTTP runtime serves independent authenticated MCP sessions", async () 
       assert.deepEqual(
         toolList.tools.map((tool) => tool.name).sort(),
         [
+          "get_asset",
           "get_conversation",
           "list_conversations",
           "search_conversations",

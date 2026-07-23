@@ -10,10 +10,32 @@ type ToolPayload = {
   error?: string;
   status?: number | null;
   conversation_id?: string;
+  experience?: string;
+  completion_status?: string;
   message_count?: number;
-  messages?: Array<{ role?: string; content?: string }>;
+  messages?: Array<{
+    role?: string;
+    content?: string;
+    content_type?: string | null;
+    rich_content?: {
+      links?: Array<{ kind?: string; url?: string; title?: string | null }>;
+      citations?: Array<{ url?: string; reference_type?: string }>;
+      diagrams?: Array<{ format?: string; source?: string }>;
+      assets?: Array<{
+        asset_id?: string;
+        kind?: string;
+        name?: string | null;
+        mime_type?: string | null;
+      }>;
+    };
+  }>;
+  items?: Array<{
+    id: string;
+    experience?: string;
+    async_status?: string | null;
+  }>;
   has_more?: boolean;
-  hits?: Array<{ conversation_id: string }>;
+  hits?: Array<{ conversation_id: string; experience?: string }>;
   scanned?: number;
   scan_cap?: number;
 };
@@ -39,6 +61,8 @@ test("MCP tools preserve archive, pagination, and upstream error semantics", asy
   let mode: BackendMode = "normal";
   const requestedArchiveFlags: string[] = [];
   let singularDetailRequests = 0;
+  let imageAssetId = "";
+  let fileAssetId = "";
 
   const backend = http.createServer(async (request, response) => {
     if (mode === "invalid-json") {
@@ -49,6 +73,46 @@ test("MCP tools preserve archive, pagination, and upstream error semantics", asy
 
     const url = new URL(request.url ?? "/", "http://localhost");
 
+    if (url.pathname.startsWith("/backend-api/files/download/")) {
+      assert.equal(request.method, "GET");
+      assert.equal(url.searchParams.get("conversation_id"), "detail-via-xhr");
+      assert.equal(url.searchParams.get("inline"), "false");
+      const fileId = decodeURIComponent(url.pathname.split("/").at(-1) ?? "");
+      assert.ok(fileId === "file_image" || fileId === "file_report");
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(
+        JSON.stringify({
+          status: "success",
+          download_url:
+            `http://${request.headers.host}/signed-assets/${fileId}` +
+            "?signature=must-not-leak",
+          file_name: fileId === "file_image" ? "chart.png" : "report.pdf",
+          mime_type: fileId === "file_image" ? "image/png" : "application/pdf",
+        }),
+      );
+      return;
+    }
+
+    if (url.pathname.startsWith("/signed-assets/")) {
+      assert.equal(request.headers.authorization, "Bearer test-token");
+      if (url.pathname.endsWith("/file_image")) {
+        const body = Buffer.from([137, 80, 78, 71]);
+        response.writeHead(200, {
+          "content-type": "image/png",
+          "content-length": String(body.byteLength),
+        });
+        response.end(body);
+      } else {
+        const body = Buffer.from("%PDF-1.7\n");
+        response.writeHead(200, {
+          "content-type": "application/pdf",
+          "content-length": String(body.byteLength),
+        });
+        response.end(body);
+      }
+      return;
+    }
+
     if (url.pathname.startsWith("/backend-api/conversation/")) {
       singularDetailRequests += 1;
       assert.equal(request.method, "GET");
@@ -58,6 +122,7 @@ test("MCP tools preserve archive, pagination, and upstream error semantics", asy
         JSON.stringify({
           conversation_id: "detail-via-xhr",
           title: "Detail through the read-only endpoint",
+          conversation_origin: "tpp",
           current_node: "a1",
           mapping: {
             root: {
@@ -73,7 +138,36 @@ test("MCP tools preserve archive, pagination, and upstream error semantics", asy
               message: {
                 id: "u1",
                 author: { role: "user" },
-                content: { content_type: "text", parts: ["Question"] },
+                content: {
+                  content_type: "multimodal_text",
+                  parts: [
+                    "Question [docs](https://example.com/docs)",
+                    {
+                      content_type: "image_asset_pointer",
+                      asset_pointer: "sediment://file_image",
+                      mime_type: "image/png",
+                      size_bytes: 4,
+                      width: 320,
+                      height: 200,
+                    },
+                  ],
+                },
+                metadata: {
+                  attachments: [
+                    {
+                      id: "file_image",
+                      name: "chart.png",
+                      mime_type: "image/png",
+                      size: 4,
+                    },
+                    {
+                      id: "file_report",
+                      name: "report.pdf",
+                      mime_type: "application/pdf",
+                      size: 9,
+                    },
+                  ],
+                },
               },
             },
             a1: {
@@ -83,7 +177,29 @@ test("MCP tools preserve archive, pagination, and upstream error semantics", asy
               message: {
                 id: "a1",
                 author: { role: "assistant" },
-                content: { content_type: "text", parts: ["Answer"] },
+                recipient: "all",
+                status: "finished_successfully",
+                end_turn: true,
+                content: {
+                  content_type: "text",
+                  parts: [
+                    "Answer\n\n```mermaid\ngraph TD\n  A --> B\n```",
+                  ],
+                },
+                metadata: {
+                  working_turn_id: "synthetic-turn",
+                  content_references: [
+                    {
+                      type: "sources_footnote",
+                      sources: [
+                        {
+                          title: "Primary source",
+                          url: "https://source.example/article",
+                        },
+                      ],
+                    },
+                  ],
+                },
               },
             },
           },
@@ -133,6 +249,8 @@ test("MCP tools preserve archive, pagination, and upstream error semantics", asy
               title: "Needle active",
               update_time: 200,
               is_archived: false,
+              conversation_origin: "tpp",
+              async_status: null,
             },
           ];
 
@@ -183,14 +301,118 @@ test("MCP tools preserve archive, pagination, and upstream error semantics", asy
         const payload = parseToolPayload(result);
         assert.notEqual(result.isError, true);
         assert.equal(payload.conversation_id, "detail-via-xhr");
+        assert.equal(payload.experience, "work");
+        assert.equal(payload.completion_status, "completed");
         assert.equal(payload.message_count, 2);
         assert.deepEqual(
           payload.messages?.map((message) => message.role),
           ["user", "assistant"],
         );
+        assert.equal(
+          payload.messages?.[0]?.rich_content?.links?.[0]?.url,
+          "https://example.com/docs",
+        );
+        assert.equal(
+          payload.messages?.[1]?.rich_content?.citations?.[0]?.url,
+          "https://source.example/article",
+        );
+        assert.equal(
+          payload.messages?.[1]?.rich_content?.diagrams?.[0]?.format,
+          "mermaid",
+        );
+        const assets = payload.messages?.[0]?.rich_content?.assets ?? [];
+        imageAssetId =
+          assets.find((asset) => asset.kind === "image")?.asset_id ?? "";
+        fileAssetId =
+          assets.find((asset) => asset.kind === "file")?.asset_id ?? "";
+        assert.match(imageAssetId, /^asset_[A-Za-z0-9_-]{32}$/);
+        assert.match(fileAssetId, /^asset_[A-Za-z0-9_-]{32}$/);
         assert.equal(singularDetailRequests, 1);
       },
     );
+
+    await t.test("advertises the new asset tool without changing existing tools", async () => {
+      const tools = await client.listTools();
+      assert.deepEqual(
+        tools.tools.map((tool) => tool.name).sort(),
+        [
+          "get_asset",
+          "get_conversation",
+          "list_conversations",
+          "search_conversations",
+        ],
+      );
+    });
+
+    await t.test("returns image assets as MCP image content", async () => {
+      const result = await client.callTool({
+        name: "get_asset",
+        arguments: {
+          conversation_id: "detail-via-xhr",
+          asset_id: imageAssetId,
+        },
+      });
+      assert.notEqual(result.isError, true);
+      assert.ok(Array.isArray(result.content));
+      assert.equal(result.content.length, 2);
+      const summaryBlock: unknown = result.content[0];
+      assert.ok(
+        summaryBlock &&
+          typeof summaryBlock === "object" &&
+          "type" in summaryBlock &&
+          summaryBlock.type === "text" &&
+          "text" in summaryBlock &&
+          typeof summaryBlock.text === "string",
+      );
+      assert.doesNotMatch(summaryBlock.text, /must-not-leak|signed-assets/);
+      const imageBlock: unknown = result.content[1];
+      assert.deepEqual(imageBlock, {
+        type: "image",
+        data: Buffer.from([137, 80, 78, 71]).toString("base64"),
+        mimeType: "image/png",
+      });
+    });
+
+    await t.test("returns ordinary files as embedded MCP resources", async () => {
+      const result = await client.callTool({
+        name: "get_asset",
+        arguments: {
+          conversation_id: "detail-via-xhr",
+          asset_id: fileAssetId,
+        },
+      });
+      assert.notEqual(result.isError, true);
+      assert.ok(Array.isArray(result.content));
+      const resourceBlock: unknown = result.content[1];
+      assert.ok(
+        resourceBlock &&
+          typeof resourceBlock === "object" &&
+          "type" in resourceBlock &&
+          resourceBlock.type === "resource" &&
+          "resource" in resourceBlock &&
+          resourceBlock.resource &&
+          typeof resourceBlock.resource === "object",
+      );
+      const resource = resourceBlock.resource as Record<string, unknown>;
+      assert.equal(resource.mimeType, "application/pdf");
+      assert.equal(
+        typeof resource.blob === "string" ? resource.blob : null,
+        Buffer.from("%PDF-1.7\n").toString("base64"),
+      );
+    });
+
+    await t.test("rejects assets not disclosed by that conversation", async () => {
+      const result = await client.callTool({
+        name: "get_asset",
+        arguments: {
+          conversation_id: "detail-via-xhr",
+          asset_id: `asset_${"a".repeat(32)}`,
+        },
+      });
+      const payload = parseToolPayload(result);
+      assert.equal(result.isError, true);
+      assert.equal(payload.error, "asset_not_found");
+    });
 
     await t.test(
       "include_archived searches active and archived conversations",
@@ -206,6 +428,15 @@ test("MCP tools preserve archive, pagination, and upstream error semantics", asy
             ?.map((hit) => hit.conversation_id)
             .sort(),
           ["active", "archived"],
+        );
+        assert.deepEqual(
+          Object.fromEntries(
+            payload.hits?.map((hit) => [
+              hit.conversation_id,
+              hit.experience,
+            ]) ?? [],
+          ),
+          { active: "work", archived: "unknown" },
         );
         assert.deepEqual(
           [...new Set(requestedArchiveFlags)].sort(),
@@ -245,6 +476,7 @@ test("MCP tools preserve archive, pagination, and upstream error semantics", asy
       });
       const payload = parseToolPayload(result);
       assert.equal(payload.has_more, false);
+      assert.equal(payload.items?.[0]?.experience, "work");
     });
 
     await t.test("has_more detects a partial page with remaining items", async () => {

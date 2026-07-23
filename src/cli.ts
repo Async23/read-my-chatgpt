@@ -234,6 +234,12 @@ async function setup(options: SetupOptions): Promise<void> {
     READ_MY_CHATGPT_MCP_PORT: String(options.port),
     READ_MY_CHATGPT_MCP_BEARER_TOKEN: bearerToken,
   };
+  const maxAssetBytes =
+    process.env.READ_MY_CHATGPT_MAX_ASSET_BYTES?.trim() ||
+    existing?.READ_MY_CHATGPT_MAX_ASSET_BYTES;
+  if (maxAssetBytes) {
+    environment.READ_MY_CHATGPT_MAX_ASSET_BYTES = maxAssetBytes;
+  }
   await writeServiceEnvironment(paths.serviceConfigPath, environment);
 
   await installService({

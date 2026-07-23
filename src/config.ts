@@ -18,6 +18,7 @@ export type Config = {
   maxPageSize: number;
   defaultMaxMessages: number;
   searchMaxScan: number;
+  maxAssetBytes: number;
 };
 
 export class ConfigError extends Error {
@@ -102,6 +103,25 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     );
   }
 
+  const maxAssetBytesValue = (
+    env.READ_MY_CHATGPT_MAX_ASSET_BYTES ?? "10485760"
+  ).trim();
+  if (!/^\d+$/.test(maxAssetBytesValue)) {
+    throw new ConfigError(
+      "READ_MY_CHATGPT_MAX_ASSET_BYTES must be an integer from 1 to 33554432.",
+    );
+  }
+  const maxAssetBytes = Number(maxAssetBytesValue);
+  if (
+    !Number.isSafeInteger(maxAssetBytes) ||
+    maxAssetBytes < 1 ||
+    maxAssetBytes > 32 * 1024 * 1024
+  ) {
+    throw new ConfigError(
+      "READ_MY_CHATGPT_MAX_ASSET_BYTES must be an integer from 1 to 33554432.",
+    );
+  }
+
   const obscuraCdpUrl = optionalValue(
     "READ_MY_CHATGPT_OBSCURA_CDP_URL",
   );
@@ -149,5 +169,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     defaultMaxMessages: 100,
     // Title-only search scans this many list items max (paginated under the hood).
     searchMaxScan: 200,
+    maxAssetBytes,
   };
 }

@@ -32,8 +32,10 @@ read-my-chatgpt doctor --json
 
 - macOS / Linux 本机部署；
 - loopback MCP endpoint；
-- 个人账号的只读会话访问；
+- 个人账号的只读 Chat 会话及已完成云端 Work 会话访问；
+- 当前可见消息中的链接、搜索引用、Mermaid 源码、图片和普通文件附件；
 - 最新发布版本。
 
 Windows 后台服务、局域网/公网暴露、团队工作区、写操作和绕过上游限制不在
-支持范围内。
+支持范围内。运行中 Work 的实时进度、Scheduled Tasks、Canvas/交互预览、
+Apps、Work Sites 和外部云文档运行时也不在当前支持范围内。
