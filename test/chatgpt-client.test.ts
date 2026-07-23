@@ -176,9 +176,13 @@ test("redacts signed asset URLs from download errors", async () => {
 
   await assert.rejects(
     () => client.downloadConversationFile("conversation", "file_image", 100),
-    (error) =>
-      error instanceof ChatGPTApiError &&
-      !error.message.includes("files.example.com") &&
-      !error.message.includes("signature=secret"),
+    (error) => {
+      assert.ok(error instanceof ChatGPTApiError);
+      assert.equal(
+        error.message,
+        "Network error downloading a ChatGPT conversation asset (Error)",
+      );
+      return true;
+    },
   );
 });
