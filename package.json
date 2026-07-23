@@ -1,6 +1,6 @@
 {
   "name": "read-my-chatgpt",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Local read-only MCP bridge for your ChatGPT web conversation history",
   "type": "module",
   "bin": {

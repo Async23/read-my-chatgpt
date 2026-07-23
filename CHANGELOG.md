@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-23
+
 ### Added
 
 - Classify ChatGPT conversations as `chat`, `work`, or `unknown` from live Web
@@ -64,7 +66,8 @@
   CLI, OpenCode, and Pi.
 - Read-only conversation listing, retrieval, and title search tools.
 
-[Unreleased]: https://github.com/Async23/read-my-chatgpt/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/Async23/read-my-chatgpt/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/Async23/read-my-chatgpt/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/Async23/read-my-chatgpt/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/Async23/read-my-chatgpt/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/Async23/read-my-chatgpt/compare/v0.1.0...v0.1.1
